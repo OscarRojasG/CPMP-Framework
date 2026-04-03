@@ -1,9 +1,9 @@
 import torch
 from solvers.solver import Solver
-from settings import INSTANCE_FOLDER
 import numpy as np
-from cpmp.layout import read_file, layout_to_tensors
+from cpmp.layout import read_file
 import copy
+from generation.adapters import *
 
 
 class ModelSolver(Solver): 
@@ -11,9 +11,9 @@ class ModelSolver(Solver):
         super().__init__("ModelSolver")
         self.model = model
      
-    def solve_from_path(self, instance_path, H, max_steps):
+    def solve_from_path(self, instance_path, H, max_steps, layout_adapter: LayoutDataAdapter, moves_adapter: MovesDataAdapter):
         layout = read_file(instance_path, H)
-        start_unsorted_stacks = layout.unsorted_stacks
+        S = len(layout.stacks)
         
         # Conjunto para almacenar los estados visitados (como tuplas inmutables)
         visited_states = set()
@@ -25,14 +25,15 @@ class ModelSolver(Solver):
                 current_state = tuple(tuple(stack) for stack in layout.stacks)
                 visited_states.add(current_state)
 
-                G, P, I, S = layout_to_tensors(layout)
-                GT = torch.from_numpy(G).unsqueeze(0)
-                PT = torch.from_numpy(P).unsqueeze(0)
-                IT = torch.from_numpy(I).unsqueeze(0)
-                ST = torch.from_numpy(np.array([S])).unsqueeze(0)
-                HT = torch.from_numpy(np.array([H])).unsqueeze(0)    
-
-                logits = self.model(GT, PT, IT, ST, HT)
+                layout_data = list(layout_adapter.layout_2_vec(layout, H))
+                for i in range(len(layout_data)):
+                    val = layout_data[i]
+                    if isinstance(val, (int, float)):
+                        layout_data[i] = torch.tensor([val])
+                    else:
+                        layout_data[i] = torch.from_numpy(val).unsqueeze(0)
+                    
+                logits = self.model(*layout_data)
                 
                 # Ordenamos todos los índices de mejor a peor
                 _, top_indices = torch.sort(logits, dim=1, descending=True)
