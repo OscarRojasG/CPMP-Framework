@@ -3,10 +3,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 from models.base.attention import CrossAttentionBlock
 from models.base.transformer import Transformer
+from generation.adapters import GPIAdapter
 
 class CPMPTransformer(Transformer):
     def __init__(self, d_model=64, nhead=8, num_layers=4, ff_dim_multiplier=4, dropout=0.1):
         super().__init__(
+            GPIAdapter,
             d_model=d_model,
             nhead=nhead,
             num_layers=num_layers,

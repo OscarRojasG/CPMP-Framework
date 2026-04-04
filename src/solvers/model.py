@@ -10,8 +10,8 @@ class ModelSolver(Solver):
     def __init__(self, model):
         super().__init__("ModelSolver")
         self.model = model
-     
-    def solve_from_path(self, instance_path, H, max_steps, layout_adapter: LayoutDataAdapter, moves_adapter: MovesDataAdapter):
+            
+    def solve_from_path(self, instance_path, H, max_steps):
         layout = read_file(instance_path, H)
         S = len(layout.stacks)
         
@@ -25,7 +25,7 @@ class ModelSolver(Solver):
                 current_state = tuple(tuple(stack) for stack in layout.stacks)
                 visited_states.add(current_state)
 
-                layout_data = list(layout_adapter.layout_2_vec(layout, H))
+                layout_data = list(self.model.layout_adapter.layout_2_vec(layout, H))
                 for i in range(len(layout_data)):
                     val = layout_data[i]
                     if isinstance(val, (int, float)):

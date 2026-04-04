@@ -6,22 +6,30 @@ import os
 import h5py
 import numpy as np
 from generation.adapters import *
+from concurrent.futures import ProcessPoolExecutor
+from functools import partial
 
 def greedy(layout, H, max_steps):
-    filepath = INSTANCE_FOLDER / "tmp.txt"
-    lay2file(layout, filename=filepath)
+    pid = os.getpid()
+    filepath = INSTANCE_FOLDER / f"tmp_{pid}.txt"
 
-    result = subprocess.run(
-        [FEG_PATH, str(H), filepath, "1.2", str(max_steps), "0", "--no-assignement", "2"],
-        check=True,
-        text=True,
-        capture_output=True
-    )
-    output_str = result.stdout.split('\t')[0].strip()
-    if not output_str.isdigit():
-        return float('inf')
+    try:
+        lay2file(layout, filename=filepath)
 
-    return int(output_str)
+        result = subprocess.run(
+            [FEG_PATH, str(H), filepath, "1.2", str(max_steps), "0", "--no-assignement", "2"],
+            check=True,
+            text=True,
+            capture_output=True
+        )
+        output_str = result.stdout.split('\t')[0].strip()
+        if not output_str.isdigit():
+            return float('inf')
+
+        return int(output_str)
+    finally:
+        if os.path.exists(filepath):
+            os.remove(filepath)
 
 def lay2file(layout, filename):
     S = layout.stacks
@@ -64,25 +72,32 @@ def get_best_moves(layout, H, max_steps):
 
     return best_moves, cost
 
-def generate_data_from_file(filepath, H, max_steps, layout_adapter: LayoutDataAdapter, moves_adapter: MovesDataAdapter):
+def generate_data_from_file(filepath, H, max_steps, layout_cls, moves_cls):
     layout = read_instance(filepath, H)
-    if layout.unsorted_stacks == 0: return None
+    if layout.unsorted_stacks == 0: 
+        return None
 
-    layout_vec = layout_adapter.layout_2_vec(layout, H)
+    layout_vec = layout_cls.layout_2_vec(layout, H)
     S = len(layout.stacks)
 
     best_moves, cost = get_best_moves(layout, H, max_steps)
-    moves_vec = moves_adapter.moves_2_vec(best_moves, S)
+    moves_vec = moves_cls.moves_2_vec(best_moves, S)
 
     return layout_vec, moves_vec, cost
 
 def generate_data(folder, H, max_steps, layout_adapter: LayoutDataAdapter, moves_adapter: MovesDataAdapter):
-    costs = []
+    filepaths = [os.path.join(INSTANCE_FOLDER / folder, f) for f in os.listdir(INSTANCE_FOLDER / folder)]
+    
+    # Extraemos las clases de las instancias recibidas
+    l_cls = layout_adapter.__class__
+    m_cls = moves_adapter.__class__
 
-    for input_filename in os.listdir(INSTANCE_FOLDER / folder):
-        filepath = os.path.join(INSTANCE_FOLDER / folder, input_filename)
-        result = generate_data_from_file(filepath, H, max_steps, layout_adapter, moves_adapter)
-        
+    with ProcessPoolExecutor() as executor:
+        task = partial(generate_data_from_file, H=H, max_steps=max_steps, layout_cls=l_cls, moves_cls=m_cls)
+        results = list(executor.map(task, filepaths))
+
+    costs = []
+    for result in results:
         if result is None:
             continue
 

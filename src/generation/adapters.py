@@ -23,16 +23,18 @@ class LayoutDataAdapter(DataAdapter):
     def __init__(self, data):
         super().__init__(data)
 
+    @staticmethod
     @abstractmethod
-    def layout_2_vec(self, layout: Layout, H: int):
+    def layout_2_vec(layout: Layout, H: int):
         pass
 
 class MovesDataAdapter(DataAdapter):
     def __init__(self, data):
         super().__init__(data)
 
+    @staticmethod
     @abstractmethod
-    def moves_2_vec(self, moves, S):
+    def moves_2_vec(moves, S):
         pass
 
 class GPIAdapter(LayoutDataAdapter):
@@ -45,7 +47,8 @@ class GPIAdapter(LayoutDataAdapter):
             "H": [], 
         })
 
-    def layout_2_vec(self, layout, H):
+    @staticmethod
+    def layout_2_vec(layout, H):
         G = [] # Valores de grupo
         P = [] # Dónde se ubica el contenedor en su respectiva pila
         I = [] # En qué pila se encuentra el contenedor
@@ -74,7 +77,8 @@ class StackMatrixAdapter(LayoutDataAdapter):
             "S": [],
         })
 
-    def layout_2_vec(self, layout, H):
+    @staticmethod
+    def layout_2_vec(layout, H):
         stacks_matrix = []
         
         all_vals = [c for s in layout.stacks for c in s]
@@ -104,8 +108,9 @@ class EnrichedStackMatrixAdapter(StackMatrixAdapter):
             "X": []  
         })
 
-    def layout_2_vec(self, layout: Layout, H: int):
-        S = super().layout_2_vec(layout, H)[0]
+    @staticmethod
+    def layout_2_vec(layout: Layout, H: int):
+        S = StackMatrixAdapter.layout_2_vec(layout, H)[0]
         X = np.zeros((len(layout.stacks), 3), dtype=np.float32)
 
         for i in range(len(layout.stacks)):
@@ -132,7 +137,8 @@ class DefaultMovesAdapter(MovesDataAdapter):
             "Y": [],
         })
     
-    def moves_2_vec(self, moves, S):
+    @staticmethod
+    def moves_2_vec(moves, S):
         Y = np.zeros(S*(S-1), dtype=np.int32)
 
         for move in moves:
