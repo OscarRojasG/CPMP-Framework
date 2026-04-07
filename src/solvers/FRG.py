@@ -1,4 +1,4 @@
-from settings import INSTANCE_FOLDER, FEG_PATH
+from settings import INSTANCE_FOLDER, FRG_PATH
 from solvers.solver import Solver
 from cpmp.layout import read_file
 from generation.adapters import *
@@ -6,9 +6,9 @@ import subprocess
 import os
 
 
-class FEGSolver(Solver): 
+class FRGSolver(Solver): 
     def __init__(self):
-        super().__init__("FEG")
+        super().__init__("FRG")
      
     def solve_from_path(self, instance_path, H, max_steps):
         layout = read_file(instance_path, H)
@@ -19,7 +19,7 @@ class FEGSolver(Solver):
             self.lay2file(layout, filepath)
 
             result = subprocess.run(
-                [FEG_PATH, str(H), filepath, "1.2", str(max_steps), "0", "--no-assignement", "2"],
+                [FRG_PATH, str(H), filepath, "1.2", str(max_steps), "0", "--no-assignement", "2"],
                 check=True,
                 text=True,
                 capture_output=True
