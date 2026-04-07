@@ -218,6 +218,13 @@ __marimo__/
 # Extra
 .vscode/
 
-/instances
-/data
-/models
+/instances/*
+/data/*
+/models/*
+/models/hyperparameters/*
+
+!/instances/benchmarks
+!/data/.gitkeep
+!/models/.gitkeep
+!/models/hyperparameters
+!/models/hyperparameters/.gitkeep

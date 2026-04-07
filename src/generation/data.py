@@ -1,4 +1,4 @@
-from settings import INSTANCE_FOLDER, DATA_FOLDER, FEG_PATH
+from settings import INSTANCE_FOLDER, DATA_FOLDER, FRG_PATH
 import subprocess
 from generation.instances import read_instance
 import copy
@@ -17,7 +17,7 @@ def greedy(layout, H, max_steps):
         lay2file(layout, filename=filepath)
 
         result = subprocess.run(
-            [FEG_PATH, str(H), filepath, "1.2", str(max_steps), "0", "--no-assignement", "2"],
+            [FRG_PATH, str(H), filepath, "1.2", str(max_steps), "0", "--no-assignment", "2"],
             check=True,
             text=True,
             capture_output=True
