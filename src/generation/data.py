@@ -81,6 +81,9 @@ def generate_data_from_file(filepath, H, max_steps, layout_cls, moves_cls):
     S = len(layout.stacks)
 
     best_moves, cost = get_best_moves(layout, H, max_steps)
+    if cost == float('inf'):
+        return None
+
     moves_vec = moves_cls.moves_2_vec(best_moves, S)
 
     return layout_vec, moves_vec, cost
