@@ -3,10 +3,12 @@ import torch
 import os
 import copy
 import json
-from settings import MODELS_FOLDER, HYPERPARAMETERS_FOLDER
+from settings import MODELS_FOLDER, HYPERPARAMETERS_FOLDER, DATA_FOLDER
 from torch.amp import GradScaler, autocast
 from training.metrics import *
 import random
+from generation.data import generate_data_rl
+from preprocessing.dataset import load_dataset
     
 class ModelScorer:
     def __init__(self, model):
@@ -168,6 +170,38 @@ def train(model, epochs, dataset, train_size, test_size, batch_size, learning_ra
     weights = model_scorer.get_best_weights_by_metric(loss_function)
     model.load_state_dict(weights)
     model_scorer.print_best_score(loss_function)
+
+    return model
+
+class DataGenerationConfigRL():
+    def __init__(self, instance_set, H, max_steps, layout_adapter_config, moves_adapter_config, num_workers):
+        self.instance_set = instance_set
+        self.H = H
+        self.max_steps = max_steps
+        self.layout_adapter_config = layout_adapter_config
+        self.moves_adapter_config = moves_adapter_config
+        self.num_workers = num_workers
+
+def rl_train(model, iterations, datagen_config, epochs, train_size, test_size, batch_size, learning_rate, weight_decay, patience, metrics, seed=42):
+    dataset_file = "tmp.data"
+
+    for _ in range(iterations):
+        generate_data_rl(datagen_config.instance_set, 
+            datagen_config.H,
+            datagen_config.max_steps,
+            datagen_config.layout_adapter_config,
+            datagen_config.moves_adapter_config,
+            model,
+            batch_size,
+            datagen_config.num_workers,
+            output_name=dataset_file)
+        
+        dataset = load_dataset(dataset_file)
+
+        model = train(model, epochs, dataset, train_size, test_size, batch_size, learning_rate, weight_decay, patience, metrics, seed)
+
+    if os.path.exists(dataset_file):
+        os.remove(dataset_file)
 
     return model
 

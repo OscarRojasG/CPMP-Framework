@@ -26,7 +26,6 @@ class LayoutDataAdapter(DataAdapter):
     def __init__(self, data_keys):
         super().__init__(data_keys)
 
-    @staticmethod
     @abstractmethod
     def layout_2_vec(layout: Layout, H: int):
         pass
@@ -35,7 +34,6 @@ class MovesDataAdapter(DataAdapter):
     def __init__(self, data_keys):
         super().__init__(data_keys)
 
-    @staticmethod
     @abstractmethod
     def moves_2_vec(moves, S):
         pass
@@ -50,8 +48,7 @@ class GPIAdapter(LayoutDataAdapter):
             "H": np.int32, 
         })
 
-    @staticmethod
-    def layout_2_vec(layout, H):
+    def layout_2_vec(self, layout, H):
         G = [] # Valores de grupo
         P = [] # Dónde se ubica el contenedor en su respectiva pila
         I = [] # En qué pila se encuentra el contenedor
@@ -88,8 +85,7 @@ class StackMatrix3DAdapter(StackMatrixAdapter):
     def __init__(self):
         super().__init__()
 
-    @staticmethod
-    def layout_2_vec(layout, H):
+    def layout_2_vec(self, layout, H):
         stacks_matrix = []
         
         all_vals = [c for s in layout.stacks for c in s]
@@ -103,12 +99,11 @@ class StackMatrix3DAdapter(StackMatrixAdapter):
             
         return (np.array(stacks_matrix, dtype=np.float32), )
     
-class StackMatrix4DAdapter(StackMatrixAdapter):
+class StackMatrix4D2FAdapter(StackMatrixAdapter):
     def __init__(self):
         super().__init__()
 
-    @staticmethod
-    def layout_2_vec(layout, H):
+    def layout_2_vec(self, layout, H):
         stacks_matrix = []
         
         all_vals = [c for s in layout.stacks for c in s]
@@ -147,15 +142,38 @@ class StackMatrix4DAdapter(StackMatrixAdapter):
 
         return (np.array(stacks_matrix, dtype=np.float32), )
     
-class EnrichedStackMatrixAdapter(LayoutDataAdapter):
+class StackMatrix4D3FAdapter(StackMatrixAdapter):
     def __init__(self):
-        super().__init__({
-            "S": np.float32,
-            "X": np.float32
-        })
+        super().__init__()
 
-    @staticmethod
-    def get_X(layout: Layout, H: int):
+    def layout_2_vec(self, layout, H):
+        stacks_matrix = []
+        
+        all_vals = [c for s in layout.stacks for c in s]
+        max_val = max(all_vals) if all_vals else 1
+
+        for i in range (len(layout.stacks)):
+            stack = []
+
+            for j in range(len(layout.stacks[i])):
+                normalized_c = layout.stacks[i][j] / max_val
+                valid_top = layout.is_top_valid(i, j)
+                valid_bottom = layout.is_bottom_valid(i, j)
+                stack.append([normalized_c, valid_top, valid_bottom])
+            
+            padding_size = H - len(stack)
+            padded_stack = stack + [[-1, -1, -1]] * padding_size
+            stacks_matrix.append(padded_stack)
+
+        return (np.array(stacks_matrix, dtype=np.float32), )
+    
+class ExtraDataAdapter(ABC):
+    @abstractmethod
+    def to_vec(self, layout: Layout, H: int):
+        pass
+
+class ExtraDataAdapter3F(ExtraDataAdapter):
+    def to_vec(self, layout: Layout, H: int):
         X = np.zeros((len(layout.stacks), 3), dtype=np.float32)
 
         for i in range(len(layout.stacks)):
@@ -164,6 +182,23 @@ class EnrichedStackMatrixAdapter(LayoutDataAdapter):
             X[i][2] = (layout.sorted_elements[i] / len(layout.stacks[i])) if len(layout.stacks[i]) != 0.0 else 1
 
         return np.array(X, dtype=np.float32)
+    
+class EnrichedStackMatrixAdapter(LayoutDataAdapter):
+    stack_adapter = None
+    extra_data_adapter = None
+
+    def __init__(self, stack_adapter, extra_data_adapter):
+        super().__init__({
+            "S": np.float32,
+            "X": np.float32
+        })
+        self.stack_adapter = stack_adapter()
+        self.extra_data_adapter = extra_data_adapter()
+
+    def layout_2_vec(self, layout: Layout, H: int):
+        S = self.stack_adapter.layout_2_vec(layout, H)[0]
+        X = self.extra_data_adapter.to_vec(layout, H)
+        return S, X
 
     def add(self, layout_data):
         S_matrix, X = layout_data
@@ -171,34 +206,13 @@ class EnrichedStackMatrixAdapter(LayoutDataAdapter):
         self.data['S'].append(S_matrix)
         self.data['X'].append(X)
     
-class EnrichedStackMatrix3DAdapter(EnrichedStackMatrixAdapter):
-    def __init__(self):
-        super().__init__()
-
-    @staticmethod
-    def layout_2_vec(layout: Layout, H: int):
-        S = StackMatrix3DAdapter.layout_2_vec(layout, H)[0]
-        X = EnrichedStackMatrixAdapter.get_X(layout, H)
-        return S, X
-    
-class EnrichedStackMatrix4DAdapter(EnrichedStackMatrixAdapter):
-    def __init__(self):
-        super().__init__()
-
-    @staticmethod
-    def layout_2_vec(layout: Layout, H: int):
-        S = StackMatrix4DAdapter.layout_2_vec(layout, H)[0]
-        X = EnrichedStackMatrixAdapter.get_X(layout, H)
-        return S, X
-    
 class DefaultMovesAdapter(MovesDataAdapter):
     def __init__(self):
         super().__init__({
             "Y": np.int32
         })
     
-    @staticmethod
-    def moves_2_vec(moves, S):
+    def moves_2_vec(self, moves, S):
         Y = np.zeros(S*(S-1), dtype=np.int32)
 
         for move in moves:

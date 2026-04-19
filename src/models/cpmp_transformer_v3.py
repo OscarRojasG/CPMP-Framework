@@ -2,12 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from models.base.transformer import Transformer
-from generation.adapters import EnrichedStackMatrix3DAdapter
 
 class CPMPTransformer(Transformer):
     def __init__(self, H, X_dim, d_model=64, nhead=8, num_layers=2, ff_dim_multiplier=4, dropout=0.1):
         super().__init__(
-            EnrichedStackMatrix3DAdapter,
             H=H,
             X_dim=X_dim,
             d_model=d_model,

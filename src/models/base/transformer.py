@@ -4,10 +4,9 @@ import torch
 from generation.adapters import LayoutDataAdapter
 
 class Transformer(nn.Module, ABC):
-    def __init__(self, layout_adapter: LayoutDataAdapter, **hyperparams):
+    def __init__(self, **hyperparams):
         torch.manual_seed(42)
         super(Transformer, self).__init__()
-        self.layout_adapter = layout_adapter
         self.hyperparams = hyperparams
 
     @abstractmethod

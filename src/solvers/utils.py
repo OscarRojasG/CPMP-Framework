@@ -1,4 +1,7 @@
-def summary(solved, steps):
+def summary(results):
+    solved = [r[0] for r in results]
+    steps = [r[1] for r in results]
+
     solved_count = sum(solved)
     total_count = len(solved)
 
