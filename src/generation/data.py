@@ -122,31 +122,32 @@ def init_worker(H, max_steps, layout_adapter_config, moves_adapter_config):
     worker_H = H
     worker_max_steps = max_steps
 
+def init_worker_sl(H, max_steps, layout_adapter_config, moves_adapter_config):
+    global worker_solver
+
+    init_worker(H, max_steps, layout_adapter_config, moves_adapter_config)
+    worker_solver = FRGSolver()
+
 def generate_data_sl(folder, H, max_steps, layout_adapter_config, moves_adapter_config, num_workers, output_name=None):
-    def init_worker_sl(H, max_steps, layout_adapter_config, moves_adapter_config):
-        global worker_solver
-
-        init_worker(H, max_steps, layout_adapter_config, moves_adapter_config)
-        worker_solver = FRGSolver()
-
     init_args = (H, max_steps, layout_adapter_config, moves_adapter_config)
     generate_data(folder, layout_adapter_config, moves_adapter_config, init_worker_sl, init_args, num_workers, output_name)
     
+def init_worker_rl(H, max_steps, model_cls, model_params, weights, layout_adapter_config, moves_adapter_config, batch_size):
+    global worker_solver
+
+    torch.set_num_threads(1) 
+    torch.set_num_interop_threads(1)
+
+    init_worker(H, max_steps, layout_adapter_config, moves_adapter_config)
+    model = model_cls(**model_params)
+    model.load_state_dict(weights)
+    model.eval()
+    worker_solver = ModelSolver(model, worker_la_adapter, batch_size)
+
 def generate_data_rl(folder, H, max_steps, layout_adapter_config, moves_adapter_config, model, batch_size, num_workers, output_name=None):
     model_cls = model.__class__
     model_params = model.hyperparams
     weights = model.state_dict()
-
-    def init_worker_rl(H, max_steps, model_cls, model_params, weights, layout_adapter_config, moves_adapter_config, batch_size):
-        global worker_solver
-
-        torch.set_num_threads(1) 
-        torch.set_num_interop_threads(1)
-
-        init_worker(H, max_steps, layout_adapter_config, moves_adapter_config)
-        model = model_cls(**model_params)
-        model.load_state_dict(weights)
-        worker_solver = ModelSolver(model, worker_la_adapter, batch_size)
     
     init_args = (H, max_steps, model_cls, model_params, weights, layout_adapter_config, moves_adapter_config, batch_size)
     generate_data(folder, layout_adapter_config, moves_adapter_config, init_worker_rl, init_args, num_workers, output_name)

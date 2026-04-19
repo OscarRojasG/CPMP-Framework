@@ -40,6 +40,21 @@ class H5Dataset(Dataset):
 
     def __len__(self):
         return self.dataset_len
+    
+    def __getstate__(self):
+            # Esto le dice a Python qué guardar cuando serializa
+            state = self.__dict__.copy()
+            # Forzamos que estas referencias sean None para el transporte
+            state['file'] = None
+            if 'datasets' in state:
+                state['datasets'] = None
+            return state
+
+    def __setstate__(self, state):
+        # Esto le dice a Python cómo reconstruirse en el worker
+        self.__dict__.update(state)
+        self.file = None
+        # self.datasets se reconstruirá en el primer __getitem__
 
 def load_dataset(filepath):
     dataset = H5Dataset(DATA_FOLDER / filepath)

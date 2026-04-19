@@ -3,12 +3,14 @@ import torch
 import os
 import copy
 import json
-from settings import MODELS_FOLDER, HYPERPARAMETERS_FOLDER, DATA_FOLDER
+from settings import MODELS_FOLDER, HYPERPARAMETERS_FOLDER
 from torch.amp import GradScaler, autocast
 from training.metrics import *
 import random
 from generation.data import generate_data_rl
 from preprocessing.dataset import load_dataset
+import torch.multiprocessing as mp
+import numpy as np
     
 class ModelScorer:
     def __init__(self, model):
@@ -138,20 +140,19 @@ def generate_sets(dataset, train_size, test_size, seed):
 
     return train_set, test_set
 
-def train(model, epochs, dataset, train_size, test_size, batch_size, learning_rate, weight_decay, patience, metrics, seed=42):
+def config_training(model, seed):
     random.seed(seed)
     torch.manual_seed(seed)
-    
-    train_set, test_set = generate_sets(dataset, train_size, test_size, seed)
 
-    ### CONFIG
     device = torch.device("cuda" if torch.cuda.is_available() 
                           else "mps" if torch.backends.mps.is_available() 
                           else "cpu")
     print(f"ℹ️ Usando dispositivo: {device}")
     torch.set_num_threads(os.cpu_count())
     model = model.to(device)
-    
+    return device
+
+def train(model, epochs, train_set, test_set, batch_size, learning_rate, weight_decay, patience, metrics, device):
     loss_function = CrossEntropyLoss()
     model_scorer = ModelScorer(model)
 
@@ -173,6 +174,11 @@ def train(model, epochs, dataset, train_size, test_size, batch_size, learning_ra
 
     return model
 
+def sl_train(model, epochs, dataset, train_size, test_size, batch_size, learning_rate, weight_decay, patience, metrics, seed=42):
+    device = config_training(model, seed)
+    train_set, test_set = generate_sets(dataset, train_size, test_size, seed)
+    return train(model, epochs, train_set, test_set, batch_size, learning_rate, weight_decay, patience, metrics, device)
+
 class DataGenerationConfigRL():
     def __init__(self, instance_set, H, max_steps, layout_adapter_config, moves_adapter_config, num_workers):
         self.instance_set = instance_set
@@ -183,9 +189,14 @@ class DataGenerationConfigRL():
         self.num_workers = num_workers
 
 def rl_train(model, iterations, datagen_config, epochs, train_size, test_size, batch_size, learning_rate, weight_decay, patience, metrics, seed=42):
+    device = config_training(model, seed)
     dataset_file = "tmp.data"
+    last_avg_cost_test = None
 
-    for _ in range(iterations):
+    for i in range(iterations):
+        if i > 0: print()
+
+        mp.set_start_method('spawn', force=True)
         generate_data_rl(datagen_config.instance_set, 
             datagen_config.H,
             datagen_config.max_steps,
@@ -197,12 +208,42 @@ def rl_train(model, iterations, datagen_config, epochs, train_size, test_size, b
             output_name=dataset_file)
         
         dataset = load_dataset(dataset_file)
+        train_set, test_set = generate_sets(dataset, train_size, test_size, seed)
 
-        model = train(model, epochs, dataset, train_size, test_size, batch_size, learning_rate, weight_decay, patience, metrics, seed)
+        dataset._open_file()
+        train_costs = dataset.file['C'][sorted(train_set.indices)]
+        avg_cost_train = np.mean(train_costs)
+
+        test_costs = dataset.file['C'][sorted(test_set.indices)]
+        avg_cost_test = np.mean(test_costs)
+        dataset.close()
+
+        print(f"Costo promedio | Train: {avg_cost_train:.2f} | Test: {avg_cost_test:.2f}")
+
+        if last_avg_cost_test:
+            current_cost_red = -(avg_cost_test - last_avg_cost_test)
+            total_cost_red = -(avg_cost_test - start_avg_cost_test)
+            current_gap = current_cost_red / last_avg_cost_test * 100
+            total_gap = total_cost_red / start_avg_cost_test * 100
+
+            print(f"Reducción del Costo: {current_cost_red:.2f} (acumulado {total_cost_red:.2f})")
+            print(f"Reducción del Gap: {current_gap:.2f}% (acumulado {total_gap:.2f}%)")
+
+            if avg_cost_test >= last_avg_cost_test:
+                print(f"Early stopping en iteración {i+1}")
+                break
+        else:
+            start_avg_cost_test = avg_cost_test
+
+        last_avg_cost_test = avg_cost_test
+        best_weights = model.state_dict()
+
+        model = train(model, epochs, train_set, test_set, batch_size, learning_rate, weight_decay, patience, metrics, device)
 
     if os.path.exists(dataset_file):
         os.remove(dataset_file)
 
+    model.load_state_dict(best_weights)
     return model
 
 def save_model(model, model_name):
