@@ -192,8 +192,9 @@ def rl_train(model, iterations, datagen_config, epochs, train_size, test_size, b
     device = config_training(model, seed)
     dataset_file = "tmp.data"
     last_avg_cost_test = None
+    i = 0
 
-    for i in range(iterations):
+    while True:
         if i > 0: print()
 
         mp.set_start_method('spawn', force=True)
@@ -238,7 +239,9 @@ def rl_train(model, iterations, datagen_config, epochs, train_size, test_size, b
         last_avg_cost_test = avg_cost_test
         best_weights = model.state_dict()
 
+        if i == iterations: break
         model = train(model, epochs, train_set, test_set, batch_size, learning_rate, weight_decay, patience, metrics, device)
+        i += 1
 
     if os.path.exists(dataset_file):
         os.remove(dataset_file)
