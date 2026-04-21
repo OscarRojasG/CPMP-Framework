@@ -7,7 +7,7 @@ from settings import MODELS_FOLDER, HYPERPARAMETERS_FOLDER
 from torch.amp import GradScaler, autocast
 from training.metrics import *
 import random
-from generation.data import generate_data_rl
+from generation.data import generate_data_rl, split_instances
 from preprocessing.dataset import load_dataset
 import torch.multiprocessing as mp
 import numpy as np
@@ -190,64 +190,82 @@ class DataGenerationConfigRL():
 
 def rl_train(model, iterations, datagen_config, epochs, train_size, test_size, batch_size, learning_rate, weight_decay, patience, metrics, seed=42):
     device = config_training(model, seed)
-    dataset_file = "tmp.data"
+    train_set_file = "tmp_train.data"
+    test_set_file = "tmp_test.data"
     last_avg_cost_test = None
     i = 0
 
-    while True:
-        if i > 0: print()
+    train_instances, test_instances = split_instances(datagen_config.instance_set, train_size, test_size, seed)
 
-        mp.set_start_method('spawn', force=True)
-        generate_data_rl(datagen_config.instance_set, 
-            datagen_config.H,
-            datagen_config.max_steps,
-            datagen_config.layout_adapter_config,
-            datagen_config.moves_adapter_config,
-            model,
-            batch_size,
-            datagen_config.num_workers,
-            output_name=dataset_file)
-        
-        dataset = load_dataset(dataset_file)
-        train_set, test_set = generate_sets(dataset, train_size, test_size, seed)
+    try:
+        while True:
+            if i > 0: print()
 
-        dataset._open_file()
-        train_costs = dataset.file['C'][sorted(train_set.indices)]
-        avg_cost_train = np.mean(train_costs)
+            mp.set_start_method('spawn', force=True)
+            generate_data_rl(train_instances, 
+                datagen_config.H,
+                datagen_config.max_steps,
+                datagen_config.layout_adapter_config,
+                datagen_config.moves_adapter_config,
+                model,
+                batch_size,
+                datagen_config.num_workers,
+                output_name=train_set_file)
+            
+            generate_data_rl(test_instances, 
+                datagen_config.H,
+                datagen_config.max_steps,
+                datagen_config.layout_adapter_config,
+                datagen_config.moves_adapter_config,
+                model,
+                batch_size,
+                datagen_config.num_workers,
+                output_name=test_set_file)
+            
+            train_set = load_dataset(train_set_file, max_size=train_size, verbose=False)
+            test_set = load_dataset(test_set_file, max_size=test_size, verbose=False)
 
-        test_costs = dataset.file['C'][sorted(test_set.indices)]
-        avg_cost_test = np.mean(test_costs)
-        dataset.close()
+            train_set._open_file()
+            avg_cost_train = np.mean(train_set.file['C'])
+            train_set.close()
 
-        print(f"Costo promedio | Train: {avg_cost_train:.2f} | Test: {avg_cost_test:.2f}")
+            test_set._open_file()
+            avg_cost_test = np.mean(test_set.file['C'])
+            test_set.close()
 
-        if last_avg_cost_test:
-            current_cost_red = -(avg_cost_test - last_avg_cost_test)
-            total_cost_red = -(avg_cost_test - start_avg_cost_test)
-            current_gap = current_cost_red / last_avg_cost_test * 100
-            total_gap = total_cost_red / start_avg_cost_test * 100
+            print(f"Tamaño datasets | Train: {len(train_set)} | Test: {len(test_set)}")
+            print(f"Costo promedio | Train: {avg_cost_train:.2f} | Test: {avg_cost_test:.2f}")
 
-            print(f"Reducción del Costo: {current_cost_red:.2f} (acumulado {total_cost_red:.2f})")
-            print(f"Reducción del Gap: {current_gap:.2f}% (acumulado {total_gap:.2f}%)")
+            if last_avg_cost_test:
+                current_cost_red = -(avg_cost_test - last_avg_cost_test)
+                total_cost_red = -(avg_cost_test - start_avg_cost_test)
+                current_gap = current_cost_red / last_avg_cost_test * 100
+                total_gap = total_cost_red / start_avg_cost_test * 100
 
-            if avg_cost_test >= last_avg_cost_test:
-                print(f"Early stopping en iteración {i+1}")
-                break
-        else:
-            start_avg_cost_test = avg_cost_test
+                print(f"Reducción del Costo: {current_cost_red:.2f} (acumulado {total_cost_red:.2f})")
+                print(f"Reducción del Gap: {current_gap:.2f}% (acumulado {total_gap:.2f}%)")
 
-        last_avg_cost_test = avg_cost_test
-        best_weights = model.state_dict()
+                if avg_cost_test >= last_avg_cost_test:
+                    print(f"Early stopping en iteración {i+1}")
+                    break
+            else:
+                start_avg_cost_test = avg_cost_test
 
-        if i == iterations: break
-        model = train(model, epochs, train_set, test_set, batch_size, learning_rate, weight_decay, patience, metrics, device)
-        i += 1
+            last_avg_cost_test = avg_cost_test
+            best_weights = model.state_dict()
 
-    if os.path.exists(dataset_file):
-        os.remove(dataset_file)
+            if i == iterations: break
+            model = train(model, epochs, train_set, test_set, batch_size, learning_rate, weight_decay, patience, metrics, device)
+            i += 1
 
-    model.load_state_dict(best_weights)
-    return model
+        model.load_state_dict(best_weights)
+        return model
+    
+    finally:
+        if os.path.exists(train_set_file):
+            os.remove(test_set_file)
+        if os.path.exists(test_set_file):
+            os.remove(test_set_file)
 
 def save_model(model, model_name):
     os.makedirs(HYPERPARAMETERS_FOLDER, exist_ok=True)

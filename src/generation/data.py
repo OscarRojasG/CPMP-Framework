@@ -10,6 +10,7 @@ from functools import partial
 from solvers.FRG import FRGSolver
 from solvers.model import ModelSolver
 import torch
+import random
 
 def get_feasible_moves(layout):
     moves = []
@@ -64,9 +65,7 @@ def generate_data_from_file(filepath):
 
     return layout_vec, moves_vec, cost
 
-def generate_data(folder, layout_adapter, moves_adapter, init_worker, init_args, num_workers, output_name):
-    filepaths = [os.path.join(INSTANCE_FOLDER / folder, f) for f in os.listdir(INSTANCE_FOLDER / folder)]
-
+def generate_data(filepaths, layout_adapter, moves_adapter, init_worker, init_args, num_workers, output_name, verbose=True):
     with ProcessPoolExecutor(
         max_workers=num_workers,
         initializer=init_worker,
@@ -93,10 +92,7 @@ def generate_data(folder, layout_adapter, moves_adapter, init_worker, init_args,
     moves_data = moves_adapter.get()
     data = {**layout_data, **moves_data}
 
-    if output_name is None:
-        output_path = DATA_FOLDER / f"{folder}"
-    else:
-        output_path = DATA_FOLDER / f"{output_name}"
+    output_path = DATA_FOLDER / f"{output_name}"
 
     with h5py.File(output_path, "w") as f:
         keys_order = [k for k in data.keys() if k != 'C']
@@ -106,7 +102,8 @@ def generate_data(folder, layout_adapter, moves_adapter, init_worker, init_args,
             f.create_dataset(key, data=data[key])
         f.create_dataset("C", data=np.stack(costs, dtype=np.int32))
 
-    print(f"Datos guardados en: {output_path} (Tamaño {layout_adapter.count()})")
+    if verbose:
+        print(f"Datos guardados en: {output_path} (Tamaño {layout_adapter.count()})")
 
 def init_worker(H, max_steps, layout_adapter_config, moves_adapter_config):
     global worker_la_adapter
@@ -128,9 +125,10 @@ def init_worker_sl(H, max_steps, layout_adapter_config, moves_adapter_config):
     init_worker(H, max_steps, layout_adapter_config, moves_adapter_config)
     worker_solver = FRGSolver()
 
-def generate_data_sl(folder, H, max_steps, layout_adapter_config, moves_adapter_config, num_workers, output_name=None):
+def generate_data_sl(folder, H, max_steps, layout_adapter_config, moves_adapter_config, num_workers, output_name):
     init_args = (H, max_steps, layout_adapter_config, moves_adapter_config)
-    generate_data(folder, layout_adapter_config, moves_adapter_config, init_worker_sl, init_args, num_workers, output_name)
+    instance_files = [os.path.join(INSTANCE_FOLDER / folder, f) for f in os.listdir(INSTANCE_FOLDER / folder)]
+    generate_data(instance_files, layout_adapter_config, moves_adapter_config, init_worker_sl, init_args, num_workers, output_name)
     
 def init_worker_rl(H, max_steps, model_cls, model_params, weights, layout_adapter_config, moves_adapter_config, batch_size):
     global worker_solver
@@ -144,13 +142,38 @@ def init_worker_rl(H, max_steps, model_cls, model_params, weights, layout_adapte
     model.eval()
     worker_solver = ModelSolver(model, worker_la_adapter, batch_size)
 
-def generate_data_rl(folder, H, max_steps, layout_adapter_config, moves_adapter_config, model, batch_size, num_workers, output_name=None):
+def generate_data_rl(instance_files, H, max_steps, layout_adapter_config, moves_adapter_config, model, batch_size, num_workers, output_name):
     model_cls = model.__class__
     model_params = model.hyperparams
     weights = model.state_dict()
     
     init_args = (H, max_steps, model_cls, model_params, weights, layout_adapter_config, moves_adapter_config, batch_size)
-    generate_data(folder, layout_adapter_config, moves_adapter_config, init_worker_rl, init_args, num_workers, output_name)
+    generate_data(instance_files, layout_adapter_config, moves_adapter_config, init_worker_rl, init_args, num_workers, output_name, verbose=False)
+
+def split_instances(folder, p1, p2, seed):
+    # 1. Preparación de archivos
+    path = INSTANCE_FOLDER / folder
+    instance_files = [os.path.join(path, f) for f in os.listdir(path)]
+    
+    # 2. Mezcla aleatoria reproducible
+    random.seed(seed)
+    random.shuffle(instance_files)
+    
+    # 3. Normalización de p1 y p2
+    total_p = p1 + p2
+    p1_norm = p1 / total_p
+    
+    # 4. Cálculo del índice de división
+    total_files = len(instance_files)
+    limit = int(total_files * p1_norm)
+    
+    # 5. Segmentación (Slicing)
+    # list1 toma desde el inicio hasta 'limit'
+    # list2 toma desde 'limit' hasta el final (asegurando el uso de todos los archivos)
+    list1 = instance_files[:limit]
+    list2 = instance_files[limit:]
+    
+    return list1, list2
 
 # Variable globales
 worker_solver = None
