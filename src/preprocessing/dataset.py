@@ -6,14 +6,17 @@ import os
 import numpy as np
 
 class H5Dataset(Dataset):
-    def __init__(self, filepath):
+    def __init__(self, filepath, max_size):
         self.filepath = filepath
         self.name = os.path.basename(filepath)
         self.file = None
 
         with h5py.File(self.filepath, "r") as f:
             self.keys = list(f.attrs['key_order'])
-            self.dataset_len = len(f[self.keys[0]])
+            if max_size is None:
+                self.dataset_len = len(f[self.keys[0]])
+            else:
+                self.dataset_len = min(len(f[self.keys[0]]), max_size)
 
     def _open_file(self):
         self.file = h5py.File(self.filepath, "r")
@@ -56,9 +59,10 @@ class H5Dataset(Dataset):
         self.file = None
         # self.datasets se reconstruirá en el primer __getitem__
 
-def load_dataset(filepath):
-    dataset = H5Dataset(DATA_FOLDER / filepath)
-    print(f"Dataset {dataset.name} cargado con {len(dataset)} muestras.")
+def load_dataset(filepath, max_size=None, verbose=True):
+    dataset = H5Dataset(DATA_FOLDER / filepath, max_size)
+    if verbose:
+        print(f"Dataset {dataset.name} cargado con {len(dataset)} muestras.")
     return dataset
 
 def load_data_from_path(filepath):
