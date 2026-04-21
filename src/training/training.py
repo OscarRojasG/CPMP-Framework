@@ -180,8 +180,8 @@ def sl_train(model, epochs, dataset, train_size, test_size, batch_size, learning
     return train(model, epochs, train_set, test_set, batch_size, learning_rate, weight_decay, patience, metrics, device)
 
 class DataGenerationConfigRL():
-    def __init__(self, instance_set, H, max_steps, layout_adapter_config, moves_adapter_config, num_workers):
-        self.instance_set = instance_set
+    def __init__(self, instance_sets, H, max_steps, layout_adapter_config, moves_adapter_config, num_workers):
+        self.instance_sets = instance_sets
         self.H = H
         self.max_steps = max_steps
         self.layout_adapter_config = layout_adapter_config
@@ -195,7 +195,7 @@ def rl_train(model, iterations, datagen_config, epochs, train_size, test_size, b
     last_avg_cost_test = None
     i = 0
 
-    train_instances, test_instances = split_instances(datagen_config.instance_set, train_size, test_size, seed)
+    train_instances, test_instances = split_instances(datagen_config.instance_sets, train_size, test_size, seed)
 
     try:
         while True:

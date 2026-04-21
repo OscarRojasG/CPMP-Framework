@@ -150,10 +150,14 @@ def generate_data_rl(instance_files, H, max_steps, layout_adapter_config, moves_
     init_args = (H, max_steps, model_cls, model_params, weights, layout_adapter_config, moves_adapter_config, batch_size)
     generate_data(instance_files, layout_adapter_config, moves_adapter_config, init_worker_rl, init_args, num_workers, output_name, verbose=False)
 
-def split_instances(folder, p1, p2, seed):
+def split_instances(folders, p1, p2, seed):
     # 1. Preparación de archivos
-    path = INSTANCE_FOLDER / folder
-    instance_files = [os.path.join(path, f) for f in os.listdir(path)]
+    instance_files = []
+    for folder in folders:
+        path = INSTANCE_FOLDER / folder
+        # Listamos y unimos la ruta completa para cada archivo
+        files = [os.path.join(path, f) for f in os.listdir(path)]
+        instance_files.extend(files)
     
     # 2. Mezcla aleatoria reproducible
     random.seed(seed)
