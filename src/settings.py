@@ -1,10 +1,14 @@
 from pathlib import Path
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+WORK_PATH = Path(os.getenv("WORK_PATH"))
+
+INSTANCE_FOLDER = WORK_PATH
+DATA_FOLDER = WORK_PATH
+MODELS_FOLDER = WORK_PATH
+HYPERPARAMETERS_FOLDER = WORK_PATH
 
 PROJECT_ROOT = Path(__file__).parent.parent
-INSTANCE_FOLDER = PROJECT_ROOT / "instances"
-DATA_FOLDER = PROJECT_ROOT / "data"
-DATASETS_FOLDER = PROJECT_ROOT / "datasets"
-MODELS_FOLDER = PROJECT_ROOT / "models"
-HYPERPARAMETERS_FOLDER = MODELS_FOLDER / "hyperparameters"
-
 FRG_PATH = PROJECT_ROOT / "src" / "frg"
