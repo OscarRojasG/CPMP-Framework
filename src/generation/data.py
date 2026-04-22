@@ -125,10 +125,10 @@ def init_worker_sl(H, max_steps, layout_adapter_config, moves_adapter_config):
     init_worker(H, max_steps, layout_adapter_config, moves_adapter_config)
     worker_solver = FRGSolver()
 
-def generate_data_sl(folder, H, max_steps, layout_adapter_config, moves_adapter_config, num_workers, output_name):
+def generate_data_sl(folder, H, max_steps, layout_adapter_config, moves_adapter_config, num_workers, output_name, verbose=True):
     init_args = (H, max_steps, layout_adapter_config, moves_adapter_config)
     instance_files = [os.path.join(INSTANCE_FOLDER / folder, f) for f in os.listdir(INSTANCE_FOLDER / folder)]
-    generate_data(instance_files, layout_adapter_config, moves_adapter_config, init_worker_sl, init_args, num_workers, output_name)
+    generate_data(instance_files, layout_adapter_config, moves_adapter_config, init_worker_sl, init_args, num_workers, output_name, verbose)
     
 def init_worker_rl(H, max_steps, model_cls, model_params, weights, layout_adapter_config, moves_adapter_config, batch_size):
     global worker_solver
@@ -142,13 +142,13 @@ def init_worker_rl(H, max_steps, model_cls, model_params, weights, layout_adapte
     model.eval()
     worker_solver = ModelSolver(model, worker_la_adapter, batch_size)
 
-def generate_data_rl(instance_files, H, max_steps, layout_adapter_config, moves_adapter_config, model, batch_size, num_workers, output_name):
+def generate_data_rl(instance_files, H, max_steps, layout_adapter_config, moves_adapter_config, model, batch_size, num_workers, output_name, verbose=True):
     model_cls = model.__class__
     model_params = model.hyperparams
     weights = model.state_dict()
     
     init_args = (H, max_steps, model_cls, model_params, weights, layout_adapter_config, moves_adapter_config, batch_size)
-    generate_data(instance_files, layout_adapter_config, moves_adapter_config, init_worker_rl, init_args, num_workers, output_name, verbose=False)
+    generate_data(instance_files, layout_adapter_config, moves_adapter_config, init_worker_rl, init_args, num_workers, output_name, verbose)
 
 def split_instances(folders, p1, p2, seed):
     # 1. Preparación de archivos

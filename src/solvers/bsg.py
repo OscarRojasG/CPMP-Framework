@@ -40,7 +40,8 @@ class BSGSolver(Solver):
                 evals += self.eval(model_solver, batch_children, H, max_steps)
 
             evals = torch.tensor(evals)
-            _, indices = torch.topk(evals, k=self.w, largest=False)
+            k = min(self.w, len(evals))
+            _, indices = torch.topk(evals, k=k, largest=False)
             states = [children[i] for i in indices]
 
             for state in states:
@@ -80,7 +81,7 @@ class BSGSolver(Solver):
             children_count = 0
 
             for i in range(len(top_indices)):
-                if top_values[i] < -9000:
+                if top_values[i] < -9000: # Descarta acciones infactibles
                     break
 
                 best_index = top_indices[i].item()

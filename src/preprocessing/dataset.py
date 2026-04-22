@@ -76,11 +76,11 @@ def load_data(filename):
     return load_data_from_path(DATA_FOLDER / filename)
 
 def generate_dataset(data_files, output_name, min_cost, max_cost, max_size):
-    output_path = DATA_FOLDER / f"{output_name}.data"
+    output_path = DATA_FOLDER / output_name
     all_data = {}
     
     for data_file in data_files:
-        path = str(DATA_FOLDER / data_file) + ".data"
+        path = str(DATA_FOLDER / data_file)
         if os.path.exists(path):
             data = load_data_from_path(path) # Usa el orden correcto automáticamente
             if not all_data:
