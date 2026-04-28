@@ -50,80 +50,102 @@ class ModelScorer:
     def get_last_update_epoch(self, metric):
         return self.best_models[metric]["epoch"]
     
-    
-def train_epoch(model, train_loader, optimizer, loss_function, metrics, device, scaler):
+def train_epoch(model, train_loader, optimizer, loss_functions, metrics_list, device, scaler):
+    """
+    metrics_list: Lista de listas. metrics_list[i] son las métricas para la salida i.
+    """
     model.train()
 
-    for *inputs, y_batch in train_loader:
-        inputs = [i.to(device, non_blocking=True) for i in inputs]
-        y_batch = y_batch.to(device, non_blocking=True)
+    for inputs_batch, y_batch in train_loader:
+        inputs = [i.to(device, non_blocking=True) for i in inputs_batch]
+        targets = [t.to(device, non_blocking=True) for t in y_batch]
 
         optimizer.zero_grad(set_to_none=True)
 
-        # Autocast para precisión mixta (FP16)
         with autocast(device.type):
-            logits = model(*inputs)
-            loss = loss_function.step(logits, y_batch)
-            for metric in metrics: metric.step(logits, y_batch)
+            logits_list = model(*inputs)
+            if not isinstance(logits_list, (list, tuple)):
+                logits_list = [logits_list]
 
-        scaler.scale(loss).backward()
+            total_loss = 0
+            # Iteramos por cada salida del modelo
+            for i, (lf, logits, target) in enumerate(zip(loss_functions, logits_list, targets)):
+                # 1. Pérdida
+                total_loss += lf.step(logits, target)
+                
+                # 2. Métricas específicas de esta salida
+                for metric in metrics_list[i]:
+                    metric.step(logits, target)
+
+        scaler.scale(total_loss).backward()
         scaler.step(optimizer)
         scaler.update()
 
-    loss = loss_function.compute()
-    values = [metric.compute() for metric in metrics]
+    # Computar resultados finales de la época
+    losses = [lf.compute() for lf in loss_functions]
+    m_values = [[m.compute() for m in m_sublist] for m_sublist in metrics_list]
+    
+    return losses, m_values
 
-    return loss, values
-
-def val_epoch(model, val_loader, loss_function, metrics, device):
+def val_epoch(model, val_loader, loss_functions, metrics_list, device):
     model.eval()
 
     with torch.no_grad(), autocast(device.type):
-        for batch in val_loader:
-            *inputs, y_batch = [i.to(device, non_blocking=True) for i in batch]
-            logits = model(*inputs)
-            loss = loss_function.step(logits, y_batch)
-            for metric in metrics: metric.step(logits, y_batch)
+        for inputs_batch, y_batch in val_loader:
+            inputs = [i.to(device, non_blocking=True) for i in inputs_batch]
+            targets = [t.to(device, non_blocking=True) for t in y_batch]
 
-    loss = loss_function.compute()
-    values = [metric.compute() for metric in metrics]
+            logits_list = model(*inputs)
+            if not isinstance(logits_list, (list, tuple)):
+                logits_list = [logits_list]
 
-    return loss, values
+            for i, (lf, logits, target) in enumerate(zip(loss_functions, logits_list, targets)):
+                lf.step(logits, target)
+                for metric in metrics_list[i]:
+                    metric.step(logits, target)
 
-def _train(model, epochs, train_set, test_set, batch_size, learning_rate, weight_decay, loss_function, print_epoch_results, model_scorer, patience, metrics, device): 
+    losses = [lf.compute() for lf in loss_functions]
+    m_values = [[m.compute() for m in m_sublist] for m_sublist in metrics_list]
+    
+    return losses, m_values
+
+def _train(model, epochs, train_set, test_set, batch_size, learning_rate, weight_decay, loss_functions, print_epoch_results, model_scorer, patience, metrics_list, device): 
+    # ... (inicialización de DataLoaders y optimizer igual que antes) ...
     num_workers = os.cpu_count()
-    train_loader = DataLoader(
-        train_set, 
-        batch_size=batch_size, 
-        num_workers=num_workers,
-        pin_memory=(device.type == "cuda"),
-        prefetch_factor=2,
-        persistent_workers=True
-    )
-    test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    train_loader = DataLoader(train_set, batch_size=batch_size, num_workers=num_workers, pin_memory=True, shuffle=True)
+    test_loader = DataLoader(test_set, batch_size=batch_size, num_workers=num_workers, pin_memory=True)
     
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
     scaler = GradScaler(device.type)
 
-    train_metrics = EpochMetrics()
-    val_metrics = EpochMetrics()
+    train_metrics, val_metrics = EpochMetrics(), EpochMetrics()
+    primary_loss = loss_functions[0]
 
-    for epoch in range(1, epochs+1):
-        loss, values = train_epoch(model, train_loader, optimizer, loss_function, metrics, device, scaler)
-        train_metrics.add_value(loss_function, loss)
-        for i, value in enumerate(values):
-            train_metrics.add_value(metrics[i], value)
+    for epoch in range(1, epochs + 1):
+        # --- TRAIN ---
+        train_loss_vals, train_m_vals = train_epoch(model, train_loader, optimizer, loss_functions, metrics_list, device, scaler)
+        
+        for lf, val in zip(loss_functions, train_loss_vals): 
+            train_metrics.add_value(lf, val)
+        # Añadir métricas (aplanando la lista de listas)
+        for i, sublist in enumerate(train_m_vals):
+            for j, val in enumerate(sublist):
+                train_metrics.add_value(metrics_list[i][j], val)
 
-        loss, values = val_epoch(model, test_loader, loss_function, metrics, device)
-        val_metrics.add_value(loss_function, loss)
-        for i, value in enumerate(values):
-            val_metrics.add_value(metrics[i], value)
+        # --- VAL ---
+        val_loss_vals, val_m_vals = val_epoch(model, test_loader, loss_functions, metrics_list, device)
+        
+        for lf, val in zip(loss_functions, val_loss_vals): 
+            val_metrics.add_value(lf, val)
+        for i, sublist in enumerate(val_m_vals):
+            for j, val in enumerate(sublist):
+                val_metrics.add_value(metrics_list[i][j], val)
 
         print_epoch_results(epoch, train_metrics, val_metrics)
         model_scorer.update_best_models(epoch, val_metrics)
 
-        if epoch - model_scorer.get_last_update_epoch(loss_function) > patience:
-            print("Early stopping en época", epoch)
+        if epoch - model_scorer.get_last_update_epoch(primary_loss) > patience:
+            print(f"Early stopping en época {epoch} (Pérdida primaria: {primary_loss.name})")
             break
 
     return train_metrics, val_metrics
@@ -152,32 +174,37 @@ def config_training(model, seed):
     model = model.to(device)
     return device
 
-def train(model, epochs, train_set, test_set, batch_size, learning_rate, weight_decay, patience, metrics, device):
-    loss_function = CrossEntropyLoss()
+def train(model, epochs, train_set, test_set, batch_size, learning_rate, weight_decay, loss_functions, patience, metrics, device):
     model_scorer = ModelScorer(model)
+    primary_loss = loss_functions[0]
 
     def print_epoch_results(epoch: int, train_metrics: EpochMetrics, val_metrics: EpochMetrics):
-        print(f'{'\n' if epoch == 1 else ''}Epoch {epoch}/{epochs}')
-        print(f"    Average - Train Loss: {loss_function.format(train_metrics.get_last_value(loss_function))}", end='')
-        print(f" | Val Loss: {loss_function.format(val_metrics.get_last_value(loss_function))}")
+        print(f"{'\n' if epoch == 1 else ''}Epoch {epoch}/{epochs}")
+        
+        train_loss_str = " | ".join([f"Train {lf.name}: {lf.format(train_metrics.get_last_value(lf))}" for lf in loss_functions])
+        val_loss_str = " | ".join([f"Val {lf.name}: {lf.format(val_metrics.get_last_value(lf))}" for lf in loss_functions])
+        
+        print(f"    {train_loss_str}")
+        print(f"    {val_loss_str}")
 
         for i, metric in enumerate(val_metrics.metrics):
-            if metric == loss_function: continue
+            if metric in loss_functions: 
+                continue
             value = val_metrics.get_last_value(metric)
-            print(f'{' | ' if i > 0 else '    '}{metric.name}: {metric.format(value)}', end='')
+            print(f"{' | ' if i > 0 else '    '}{metric.name}: {metric.format(value)}", end='')
         print()
 
-    train_metrics, val_metrics = _train(model, epochs, train_set, test_set, batch_size, learning_rate, weight_decay, loss_function, print_epoch_results, model_scorer, patience, metrics, device)
-    weights = model_scorer.get_best_weights_by_metric(loss_function)
+    _train(model, epochs, train_set, test_set, batch_size, learning_rate, weight_decay, loss_functions, print_epoch_results, model_scorer, patience, metrics, device)
+    weights = model_scorer.get_best_weights_by_metric(primary_loss)
     model.load_state_dict(weights)
-    model_scorer.print_best_score(loss_function)
+    model_scorer.print_best_score(primary_loss)
 
     return model
 
-def sl_train(model, epochs, dataset, train_size, test_size, batch_size, learning_rate, weight_decay, patience, metrics, seed=42):
+def sl_train(model, epochs, dataset, train_size, test_size, batch_size, learning_rate, weight_decay, loss_functions, patience, metrics, seed=42):
     device = config_training(model, seed)
     train_set, test_set = generate_sets(dataset, train_size, test_size, seed)
-    return train(model, epochs, train_set, test_set, batch_size, learning_rate, weight_decay, patience, metrics, device)
+    return train(model, epochs, train_set, test_set, batch_size, learning_rate, weight_decay, loss_functions, patience, metrics, device)
 
 class DataGenerationConfigRL():
     def __init__(self, instance_sets, H, max_steps, layout_adapter_config, moves_adapter_config, num_workers):
@@ -188,7 +215,7 @@ class DataGenerationConfigRL():
         self.moves_adapter_config = moves_adapter_config
         self.num_workers = num_workers
 
-def rl_train(model, iterations, datagen_config, epochs, train_size, test_size, batch_size, learning_rate, weight_decay, patience, metrics, seed=42):
+def rl_train(model, iterations, datagen_config, epochs, train_size, test_size, batch_size, learning_rate, weight_decay, loss_functions, patience, metrics, seed=42):
     device = config_training(model, seed)
     train_set_file = "tmp_train.data"
     test_set_file = "tmp_test.data"
@@ -255,7 +282,7 @@ def rl_train(model, iterations, datagen_config, epochs, train_size, test_size, b
             best_weights = model.state_dict()
 
             if i == iterations: break
-            model = train(model, epochs, train_set, test_set, batch_size, learning_rate, weight_decay, patience, metrics, device)
+            model = train(model, epochs, train_set, test_set, batch_size, learning_rate, weight_decay, loss_functions, patience, metrics, device)
             i += 1
 
         model.load_state_dict(best_weights)

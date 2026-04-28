@@ -87,3 +87,27 @@ class CrossEntropyLoss(Metric):
     
     def format(self, value):
         return f"{value:.4f}"
+    
+class MSE(Metric):
+    def __init__(self):
+        super().__init__("MSE", False)
+
+    def reset(self):
+        self.total_samples = 0
+        self.total_mse = 0
+    
+    def step(self, logits, y):
+        mse = torch.nn.functional.mse_loss(logits, y.float())
+        
+        batch_size = y.size(0)
+        self.total_mse += mse.item() * batch_size
+        self.total_samples += batch_size
+        
+        return mse
+
+    def _compute(self):
+        if self.total_samples == 0: return 0.0
+        return self.total_mse / self.total_samples
+    
+    def format(self, value):
+        return f"{value:.4f}"

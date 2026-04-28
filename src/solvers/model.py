@@ -29,6 +29,7 @@ class ModelSolver(Solver):
         
         # Historial de estados visitados por cada layout individualmente
         visited_states_list = [set() for _ in range(num_layouts)]
+        first_it = True
         
         with torch.no_grad():
             while any(not l.is_sorted() and l.steps < max_steps for l in layouts):
@@ -57,7 +58,11 @@ class ModelSolver(Solver):
                 batch_inputs = [torch.cat(tensors, dim=0) for tensors in zip(*batch_data_lists)]
                 
                 # Inferencia en batch
-                logits = self.model(*batch_inputs)
+                output = self.model(*batch_inputs)
+                logits = output[0] if isinstance(output, tuple) else output
+                if first_it:
+                    print(output[1])
+                    first_it = False
                 
                 # Ordenamos índices de mejor a peor para cada layout en el batch
                 _, top_indices_batch = torch.sort(logits, dim=1, descending=True)

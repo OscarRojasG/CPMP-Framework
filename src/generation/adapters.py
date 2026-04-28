@@ -30,12 +30,12 @@ class LayoutDataAdapter(DataAdapter):
     def layout_2_vec(layout: Layout, H: int):
         pass
 
-class MovesDataAdapter(DataAdapter):
+class OutputAdapter(DataAdapter):
     def __init__(self, data_keys):
         super().__init__(data_keys)
 
     @abstractmethod
-    def moves_2_vec(moves, S):
+    def output_2_vec(moves, S, cost):
         pass
 
 class GPIAdapter(LayoutDataAdapter):
@@ -206,13 +206,13 @@ class EnrichedStackMatrixAdapter(LayoutDataAdapter):
         self.data['S'].append(S_matrix)
         self.data['X'].append(X)
     
-class DefaultMovesAdapter(MovesDataAdapter):
+class DefaultOutputAdapter(OutputAdapter):
     def __init__(self):
         super().__init__({
             "Y": np.int32
         })
     
-    def moves_2_vec(self, moves, S):
+    def output_2_vec(self, moves, S, cost):
         Y = np.zeros(S*(S-1), dtype=np.int32)
 
         for move in moves:
@@ -223,5 +223,22 @@ class DefaultMovesAdapter(MovesDataAdapter):
 
         return Y
     
-    def add(self, moves_data):
-        self.data['Y'].append(moves_data)
+    def add(self, output_data):
+        self.data['Y'].append(output_data)
+
+class MultiOutputAdapter(OutputAdapter):
+    def __init__(self):
+        super().__init__({
+            "Y": np.int32,
+            "cost": np.int32
+        })
+        self.action_adapter = DefaultOutputAdapter()
+    
+    def output_2_vec(self, moves, S, cost):
+        Y = self.action_adapter.output_2_vec(moves, S, cost)
+        return Y, cost
+    
+    def add(self, output_data):
+        Y, cost = output_data
+        self.data['Y'].append(Y)
+        self.data['cost'].append(cost)

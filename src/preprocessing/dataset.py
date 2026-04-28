@@ -6,58 +6,57 @@ import os
 import numpy as np
 
 class H5Dataset(Dataset):
-    def __init__(self, filepath, max_size):
+    def __init__(self, filepath, max_size=None):
         self.filepath = filepath
         self.name = os.path.basename(filepath)
         self.file = None
 
         with h5py.File(self.filepath, "r") as f:
-            self.keys = list(f.attrs['key_order'])
-            if max_size is None:
-                self.dataset_len = len(f[self.keys[0]])
-            else:
-                self.dataset_len = min(len(f[self.keys[0]]), max_size)
+            self.input_keys = list(f['input'].attrs['key_order'])
+            self.output_keys = list(f['output'].attrs['key_order'])
+            
+            total_len = len(f['input'][self.input_keys[0]])
+            self.dataset_len = total_len if max_size is None else min(total_len, max_size)
 
     def _open_file(self):
         self.file = h5py.File(self.filepath, "r")
-        self.datasets = {k: self.file[k] for k in self.keys}
+        self.input_datasets = {k: self.file[f'input/{k}'] for k in self.input_keys}
+        self.output_datasets = {k: self.file[f'output/{k}'] for k in self.output_keys}
+        self.cost_dataset = self.file['C']
         
-    def __getitem__(self, idx):
-        if self.file is None: self._open_file()
-            
-        items = []
-        for k in self.keys:
-            val = self.datasets[k][idx]
-            if isinstance(val, np.ndarray):
-                val = torch.from_numpy(val)
-            else:
-                val = torch.tensor(val)
-            items.append(val)
+    def _to_tensor(self, val):
+        """Helper para convertir datos a tensores de forma eficiente"""
+        if isinstance(val, np.ndarray):
+            return torch.from_numpy(val)
+        return torch.tensor(val)
 
-        return tuple(items)
+    def __getitem__(self, idx):
+        if self.file is None: 
+            self._open_file()
+            
+        inputs = [self._to_tensor(self.input_datasets[k][idx]) for k in self.input_keys]
+        outputs = [self._to_tensor(self.output_datasets[k][idx]) for k in self.output_keys]
+        return tuple(inputs), tuple(outputs)
     
+    def __len__(self):
+        return self.dataset_len
+
     def close(self):
         if self.file is not None:
             self.file.close()
             self.file = None
 
-    def __len__(self):
-        return self.dataset_len
-    
     def __getstate__(self):
-            # Esto le dice a Python qué guardar cuando serializa
-            state = self.__dict__.copy()
-            # Forzamos que estas referencias sean None para el transporte
-            state['file'] = None
-            if 'datasets' in state:
-                state['datasets'] = None
-            return state
+        state = self.__dict__.copy()
+        state['file'] = None
+        state['input_datasets'] = None
+        state['output_datasets'] = None
+        state['cost_dataset'] = None
+        return state
 
     def __setstate__(self, state):
-        # Esto le dice a Python cómo reconstruirse en el worker
         self.__dict__.update(state)
         self.file = None
-        # self.datasets se reconstruirá en el primer __getitem__
 
 def load_dataset(filepath, max_size=None, verbose=True):
     dataset = H5Dataset(DATA_FOLDER / filepath, max_size)

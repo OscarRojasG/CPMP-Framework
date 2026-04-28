@@ -76,7 +76,7 @@ def generate_instances(basename, H, S, N, amount, r=5, seed=42):
         generate_instance(filepath, H, S, N, r)
 
 def read_instance(file, H):
-    with open(file) as f:
+    with open(INSTANCE_FOLDER / file) as f:
         S, C = [int(x) for x in next(f).split()] # read first line
         stacks = []
         for line in f: # read rest of lines

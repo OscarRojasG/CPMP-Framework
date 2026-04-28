@@ -61,7 +61,7 @@ def generate_data_from_file(filepath):
     if len(best_moves) == 0:
         return None
 
-    moves_vec = worker_ma_adapter.moves_2_vec(best_moves, S)
+    moves_vec = worker_ma_adapter.output_2_vec(best_moves, S, cost)
 
     return layout_vec, moves_vec, cost
 
@@ -90,16 +90,23 @@ def generate_data(filepaths, layout_adapter, moves_adapter, init_worker, init_ar
 
     layout_data = layout_adapter.get()
     moves_data = moves_adapter.get()
-    data = {**layout_data, **moves_data}
 
     output_path = DATA_FOLDER / f"{output_name}"
 
     with h5py.File(output_path, "w") as f:
-        keys_order = [k for k in data.keys() if k != 'C']
-        f.attrs['key_order'] = [k for k in keys_order]
+        g_input = f.create_group("input")
+        g_output = f.create_group("output")
 
-        for key in data:
-            f.create_dataset(key, data=data[key])
+        input_keys = list(layout_data.keys())
+        for key in input_keys:
+            g_input.create_dataset(key, data=layout_data[key])
+        g_input.attrs['key_order'] = [k for k in input_keys]
+
+        output_keys = list(moves_data.keys())
+        for key in output_keys:
+            g_output.create_dataset(key, data=moves_data[key])
+        g_output.attrs['key_order'] = [k for k in output_keys]
+
         f.create_dataset("C", data=np.stack(costs, dtype=np.int32))
 
     if verbose:
@@ -127,7 +134,7 @@ def init_worker_sl(H, max_steps, layout_adapter_config, moves_adapter_config):
 
 def generate_data_sl(folder, H, max_steps, layout_adapter_config, moves_adapter_config, num_workers, output_name, verbose=True):
     init_args = (H, max_steps, layout_adapter_config, moves_adapter_config)
-    instance_files = [os.path.join(INSTANCE_FOLDER / folder, f) for f in os.listdir(INSTANCE_FOLDER / folder)]
+    instance_files = [os.path.join(folder, f) for f in os.listdir(INSTANCE_FOLDER / folder)]
     generate_data(instance_files, layout_adapter_config, moves_adapter_config, init_worker_sl, init_args, num_workers, output_name, verbose)
     
 def init_worker_rl(H, max_steps, model_cls, model_params, weights, layout_adapter_config, moves_adapter_config, batch_size):
@@ -155,8 +162,7 @@ def split_instances(folders, p1, p2, seed):
     instance_files = []
     for folder in folders:
         path = INSTANCE_FOLDER / folder
-        # Listamos y unimos la ruta completa para cada archivo
-        files = [os.path.join(path, f) for f in os.listdir(path)]
+        files = [os.path.join(folder, f) for f in os.listdir(path)]
         instance_files.extend(files)
     
     # 2. Mezcla aleatoria reproducible
