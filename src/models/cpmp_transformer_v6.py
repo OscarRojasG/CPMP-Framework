@@ -43,31 +43,70 @@ class CPMPTransformer(Transformer):
         self.origin_proj = nn.Linear(d_model, d_model)
         self.dest_proj = nn.Linear(d_model, d_model)
 
-        self.cost_head = nn.Sequential(
-            nn.Linear(d_model, d_model),
-            nn.ReLU(),
-            nn.Linear(d_model, 1) # Salida de un único valor
-        )
-
-    def forward(self, S, X):
+    def encode(self, S, X, memory=None):
+        """
+        S: (batch_size, S_len, H, C_dim)
+        X: (batch_size, S_len, X_dim)
+        memory: dict (opcional) {tuple_state: embedding_tensor}
+        """
         batch_size, S_len, H, C_dim = S.shape
         device = S.device
         
-        padding_mask = (S == -1).all(dim=-1) 
-        x = self.input_projection(S.float())
-        x = torch.where(padding_mask.unsqueeze(-1), self.empty_embed, x)
+        if memory is None:
+            memory = {}
+
+        # 1. Identificar qué estados ya tenemos en caché
+        # Creamos una representación hashable de cada estado en el batch
+        # Nota: S[i] es el estado completo de todos los stacks para la muestra i
+        state_keys = [tuple(s.detach().cpu().numpy().flatten()) for s in S]
         
-        x = x.view(batch_size * S_len, H, self.d_model) 
-        x = self.intra_stack_attention(x) 
+        # Índices de los estados que NO están en memoria
+        missing_indices = [i for i, key in enumerate(state_keys) if key not in memory]
         
-        x = x.view(batch_size, S_len, H, self.d_model)
-        x_flat = x.view(batch_size, S_len, H * self.d_model)
-        stack_vertical_info = self.stack_summary_layer(x_flat) 
-        
-        x_external_info = self.x_projection(X) 
-        combined = torch.cat([stack_vertical_info, x_external_info], dim=-1)
-        stack_embeddings = self.fusion_layer(combined) 
-        stack_embeddings = self.fusion_norm(stack_embeddings)
+        # Tensor final que vamos a rellenar
+        stack_embeddings = torch.zeros((batch_size, S_len, self.d_model), device=device)
+
+        # 2. Si hay estados nuevos, procesarlos por el modelo
+        if len(missing_indices) > 0:
+            # Filtramos los tensores para procesar solo lo necesario
+            S_to_process = S[missing_indices]
+            X_to_process = X[missing_indices]
+            curr_batch_size = len(missing_indices)
+
+            # --- Lógica original de procesamiento ---
+            padding_mask = (S_to_process == -1).all(dim=-1) 
+            x = self.input_projection(S_to_process.float())
+            x = torch.where(padding_mask.unsqueeze(-1), self.empty_embed, x)
+            
+            x = x.view(curr_batch_size * S_len, H, self.d_model) 
+            x = self.intra_stack_attention(x) 
+            
+            x = x.view(curr_batch_size, S_len, H, self.d_model)
+            x_flat = x.view(curr_batch_size, S_len, H * self.d_model)
+            stack_vertical_info = self.stack_summary_layer(x_flat) 
+            
+            x_external_info = self.x_projection(X_to_process) 
+            combined = torch.cat([stack_vertical_info, x_external_info], dim=-1)
+            processed_embeddings = self.fusion_layer(combined) 
+            processed_embeddings = self.fusion_norm(processed_embeddings)
+            # ----------------------------------------
+
+            # 3. Guardar resultados nuevos en memoria y ponerlos en el tensor final
+            for idx, original_batch_idx in enumerate(missing_indices):
+                emb = processed_embeddings[idx]
+                memory[state_keys[original_batch_idx]] = emb.detach() # Guardamos copia sin gradiente
+                stack_embeddings[original_batch_idx] = emb
+
+        # 4. Recuperar los que ya estaban en memoria
+        existing_indices = [i for i, key in enumerate(state_keys) if key in memory and i not in missing_indices]
+        for i in existing_indices:
+            stack_embeddings[i] = memory[state_keys[i]].to(device)
+
+        return stack_embeddings, memory
+
+    def decode(self, S, X, stack_embeddings):
+        batch_size, S_len, H, C_dim = S.shape
+        device = S.device
 
         x_global = self.inter_stack_attention(stack_embeddings)
         
@@ -95,7 +134,9 @@ class CPMPTransformer(Transformer):
         
         logits = logits_matrix[:, mask_diag_flat]
 
-        x_for_cost = x_global.detach().mean(dim=1) # Pooling para obtener un vector por batch
-        cost = self.cost_head(x_for_cost).squeeze(-1)
-
-        return logits, cost
+        return logits
+    
+    def forward(self, S, X):
+        stack_embeddings, _ = self.encode(S, X)
+        logits = self.decode(S, X, stack_embeddings)
+        return logits

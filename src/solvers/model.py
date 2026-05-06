@@ -10,6 +10,9 @@ class ModelSolver(Solver):
         self.input_adapter = input_adapter
         self.batch_size = batch_size
 
+        # Diccionario de embeddings
+        self.memory = None
+
     def solve_from_layouts(self, layouts, H, max_steps):
         results = []
         for i in range(0, len(layouts), self.batch_size):
@@ -53,8 +56,8 @@ class ModelSolver(Solver):
                 batch_inputs = [torch.cat(tensors, dim=0) for tensors in zip(*batch_data_lists)]
                 
                 # Inferencia en batch
-                output = self.model(*batch_inputs)
-                logits = output[0] if isinstance(output, tuple) else output
+                stack_embeddings, self.memory = self.model.encode(*batch_inputs, self.memory)
+                logits = self.model.decode(*batch_inputs, stack_embeddings)
                 
                 # Ordenamos índices de mejor a peor para cada layout en el batch
                 _, top_indices_batch = torch.sort(logits, dim=1, descending=True)

@@ -26,17 +26,20 @@ class BSGModelSolver(Solver):
         best_state = None
         model_solver = ModelSolver(self.model, self.input_adapter, self.batch_size)
         visited_states = set()
+        memory = None
 
         while not best_state and states[0].steps < max_steps:
             children = []
             for i in range(0, len(states), self.batch_size):
                 batch_states = states[i:i+self.batch_size]
-                children += self.expand(batch_states, visited_states, H)
+                batch_children, memory = self.expand(batch_states, visited_states, H, memory)
+                children += batch_children
 
             evals = []
             for i in range(0, len(children), self.batch_size):
                 batch_children = children[i:i+self.batch_size]
-                evals += self.eval(model_solver, batch_children, H, max_steps)
+                batch_evals, memory = self.eval(model_solver, batch_children, H, max_steps, memory)
+                evals += batch_evals
 
             evals = torch.tensor(evals)
             k = min(self.w, len(evals))
@@ -52,7 +55,7 @@ class BSGModelSolver(Solver):
             return True, best_state.steps
         return False, float('inf')
     
-    def expand(self, states, visited_states, H):
+    def expand(self, states, visited_states, H, memory):
         S = len(states[0].stacks)
         children = []
 
@@ -68,7 +71,9 @@ class BSGModelSolver(Solver):
         batch_inputs = [torch.cat(tensors, dim=0) for tensors in zip(*batch_data_lists)]
         
         # Inferencia en batch
-        logits = self.model(*batch_inputs)
+        with torch.no_grad():
+            stack_embeddings, memory = self.model.encode(*batch_inputs, memory)
+            logits = self.model.decode(*batch_inputs, stack_embeddings)
         
         # Ordenamos índices de mejor a peor para cada layout en el batch
         top_values_batch, top_indices_batch = torch.sort(logits, dim=1, descending=True)
@@ -100,9 +105,10 @@ class BSGModelSolver(Solver):
                     if children_count >= self.w:
                         break
 
-        return children
+        return children, memory
     
-    def eval(self, model_solver, children, H, max_steps):
+    def eval(self, model_solver, children, H, max_steps, memory):
         children_copy = [copy.deepcopy(child) for child in children]
+        model_solver.memory = memory
         result = model_solver.solve_from_layouts(children_copy, H, max_steps)
-        return [r[1] for r in result]
+        return [r[1] for r in result], model_solver.memory
