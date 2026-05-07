@@ -27,7 +27,7 @@ class FRGSolver(Solver):
             lay2file(layout, filepath)
 
             result = subprocess.run(
-                [FRG_PATH, str(H), filepath, "1.2", str(max_steps), "0", "--no-assignement", "2"],
+                [FRG_PATH, str(H), filepath, "1.2", str(max_steps), "0", "--no-assignment", "2"],
                 check=True,
                 text=True,
                 capture_output=True
