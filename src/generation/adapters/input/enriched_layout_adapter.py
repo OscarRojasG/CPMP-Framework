@@ -18,7 +18,7 @@ class EnrichedLayoutAdapter(InputAdapter):
 
     def input_2_vec(self, layout: Layout, H: int, S_max: int = 10, H_max: int = 12):
         L = self.layout_adapter.input_2_vec(layout, H, S_max, H_max)[0]
-        X = self.stack_features_adapter.to_vec(layout, H)
+        X = self.stack_features_adapter.to_vec(layout, H, S_max)
         S = len(layout.stacks)
         return L, X, S, H
 

@@ -7,5 +7,5 @@ class InputAdapter(DataAdapter):
         super().__init__(data_keys)
 
     @abstractmethod
-    def input_2_vec(layout: Layout, H: int):
+    def input_2_vec(layout: Layout, H: int, S_max: int, H_max: int):
         pass

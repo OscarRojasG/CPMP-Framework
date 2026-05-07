@@ -1,7 +1,7 @@
 import numpy as np
 from generation.adapters.input.layout.layout_adapter import LayoutAdapter
 
-class Layout4D2FAdapter(LayoutAdapter):
+class Layout4D2FV2Adapter(LayoutAdapter):
     def __init__(self):
         super().__init__()
 
@@ -14,26 +14,22 @@ class Layout4D2FAdapter(LayoutAdapter):
         # 1. Procesar stacks existentes y aplicar padding de ALTURA
         for i in range(len(layout.stacks)):
             stack = []
-            is_blocked = False
-            prev_val = None
+            H_stack = len(layout.stacks[i])
 
             # Procesamos cada contenedor en el stack actual
-            for j in range(len(layout.stacks[i])):
+            for j in range(H_stack):
                 current_val = layout.stacks[i][j]
                 normalized_c = current_val / max_val
-                
-                if j > 0:
-                    if is_blocked or current_val > prev_val:
-                        is_blocked = True
-                
-                blocked_val = 1.0 if is_blocked else 0.0
-                stack.append([normalized_c, blocked_val])
-                prev_val = current_val 
+
+                pos = j / (H_stack - 1) if H_stack > 1 else 0
+                depth = j / (H - 1)
+
+                stack.append([normalized_c, pos, depth])
             
-            # Padding de Altura: Rellenamos con [-1.0, -1.0] hasta H_max
+            # Padding de Altura: Rellenamos con [-1.0, -1.0, -1.0] hasta H_max
             padding_size = H_max - len(stack)
             # Recortamos si excede H_max y añadimos padding si falta
-            padded_stack = stack[:H_max] + [[-1.0, -1.0]] * max(0, padding_size)
+            padded_stack = stack[:H_max] + [[-1.0, -1.0, -1.0]] * max(0, padding_size)
             stacks_matrix.append(padded_stack)
 
         # 2. Padding de STACKS: Rellenamos con stacks vacíos hasta S_max
@@ -41,8 +37,8 @@ class Layout4D2FAdapter(LayoutAdapter):
         stacks_to_add = S_max - num_current_stacks
         
         if stacks_to_add > 0:
-            # Creamos stacks vacíos donde cada celda es [-1.0, -1.0]
-            empty_stack = [[-1.0, -1.0]] * H_max
+            # Creamos stacks vacíos donde cada celda es [-1.0, -1.0, -1.0]
+            empty_stack = [[-1.0, -1.0, -1.0]] * H_max
             for _ in range(stacks_to_add):
                 stacks_matrix.append(empty_stack)
         else:
