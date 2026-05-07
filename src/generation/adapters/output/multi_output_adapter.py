@@ -12,9 +12,9 @@ class MultiOutputAdapter(OutputAdapter):
         self.action_adapter = ActionAdapter()
         self.cost_adapter = CostAdapter()
     
-    def output_2_vec(self, moves, S, cost):
-        Y = self.action_adapter.output_2_vec(moves, S, cost)
-        cost = self.cost_adapter.output_2_vec(moves, S, cost)
+    def output_2_vec(self, moves, cost, S_max=10):
+        Y = self.action_adapter.output_2_vec(moves, cost, S_max)
+        cost = self.cost_adapter.output_2_vec(moves, cost, S_max)
         return Y, cost
     
     def add(self, output_data):

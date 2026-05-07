@@ -6,5 +6,5 @@ class OutputAdapter(DataAdapter):
         super().__init__(data_keys)
 
     @abstractmethod
-    def output_2_vec(moves, S, cost):
+    def output_2_vec(moves, cost, S_max):
         pass

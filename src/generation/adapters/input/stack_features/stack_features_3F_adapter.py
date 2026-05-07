@@ -3,12 +3,25 @@ from cpmp.layout import Layout
 import numpy as np
 
 class StackFeatures3FAdapter(StackFeaturesAdapter):
-    def to_vec(self, layout: Layout, H: int):
-        X = np.zeros((len(layout.stacks), 3), dtype=np.float32)
+    def to_vec(self, layout: Layout, H: int, S_max: int = 10):
+        # 1. Inicializamos la matriz con -1.0 para todas las posiciones (S_max, 3)
+        X = np.full((S_max, 3), -1.0, dtype=np.float32)
 
+        # 2. Iteramos solo hasta el número de stacks reales
         for i in range(len(layout.stacks)):
-            X[i][0] = 1.0 if layout.is_sorted_stack(i) else 0.0
-            X[i][1] = len(layout.stacks[i]) / H
-            X[i][2] = (layout.sorted_elements[i] / len(layout.stacks[i])) if len(layout.stacks[i]) != 0.0 else 1
+            # Calculamos las features para los stacks existentes
+            is_sorted = 1.0 if layout.is_sorted_stack(i) else 0.0
+            height_ratio = len(layout.stacks[i]) / H
+            
+            # Evitamos división por cero si el stack está vacío
+            if len(layout.stacks[i]) != 0:
+                sorted_ratio = layout.sorted_elements[i] / len(layout.stacks[i])
+            else:
+                sorted_ratio = 1.0
 
-        return np.array(X, dtype=np.float32)
+            # Asignamos los valores calculados
+            X[i][0] = is_sorted
+            X[i][1] = height_ratio
+            X[i][2] = sorted_ratio
+
+        return X

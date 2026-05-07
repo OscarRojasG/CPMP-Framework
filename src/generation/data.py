@@ -53,13 +53,12 @@ def generate_data_from_file(filepath):
         return None
 
     input_vec = worker_la_adapter.input_2_vec(layout, worker_H)
-    S = len(layout.stacks)
 
     best_moves, cost = get_best_moves(layout, worker_H, worker_max_steps)
     if cost == 0 or len(best_moves) == 0:
         return None
 
-    output_vec = worker_ma_adapter.output_2_vec(best_moves, S, cost)
+    output_vec = worker_ma_adapter.output_2_vec(best_moves, cost)
 
     return input_vec, output_vec, cost
 

@@ -90,7 +90,7 @@ def train_epoch(model, train_loader, optimizer, loss_functions, metrics_list, de
 def val_epoch(model, val_loader, loss_functions, metrics_list, device):
     model.eval()
 
-    with torch.no_grad(), autocast(device.type):
+    with torch.no_grad():
         for inputs_batch, y_batch in val_loader:
             inputs = [i.to(device, non_blocking=True) for i in inputs_batch]
             targets = [t.to(device, non_blocking=True) for t in y_batch]

@@ -39,30 +39,30 @@ class CPMPTransformer(Transformer):
         
         self.inter_stack_attention = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(d_model, nhead, d_model * ff_dim_multiplier, dropout, batch_first=True),
-            num_layers=num_layers
+            num_layers=num_layers,
+            enable_nested_tensor=False
         )
         
         self.origin_proj = nn.Linear(d_model, d_model)
         self.dest_proj = nn.Linear(d_model, d_model)
 
-    def encode(self, S, X, H, memory=None):
+    def encode(self, L, X, S, H, memory=None):
         """
         S: (batch_size, S_len, H, C_dim)
         X: (batch_size, S_len, X_dim)
         memory: dict (opcional) {tuple_state: embedding_tensor}
         """
-        batch_size, S_len, H_max, C_dim = S.shape
-        device = S.device
+        batch_size, S_len, H_max, C_dim = L.shape
+        device = L.device
+
+        # s_mask es [B, S_len], True para stacks válidos, False para padding.
+        s_mask = torch.arange(S_len, device=device).expand(batch_size, S_len) < S.unsqueeze(1)
         
         if memory is None:
             memory = {}
 
-        # 1. Identificar qué estados ya tenemos en caché
-        # Creamos una representación hashable de cada estado en el batch
-        # Nota: S[i] es el estado completo de todos los stacks para la muestra i
-        state_keys = [tuple(s.detach().cpu().numpy().flatten()) for s in S]
-        
-        # Índices de los estados que NO están en memoria
+        # 1. Identificación de estados para caché
+        state_keys = [tuple(s.detach().cpu().numpy().flatten()) for s in L]
         missing_indices = [i for i, key in enumerate(state_keys) if key not in memory]
         
         # Tensor final que vamos a rellenar
@@ -70,7 +70,7 @@ class CPMPTransformer(Transformer):
 
         # 2. Si hay estados nuevos, procesarlos por el modelo
         if len(missing_indices) > 0:
-            S_to_process = S[missing_indices] # [B', S, H, C]
+            S_to_process = L[missing_indices] # [B', S, H, C]
             X_to_process = X[missing_indices]
             curr_B = S_to_process.shape[0]
 
@@ -103,10 +103,21 @@ class CPMPTransformer(Transformer):
             # 7. Pooling: Tomamos solo el output de la posición del CLS (índice 0)
             stack_vertical_info = x_out[:, 0, :].view(curr_B, S_len, self.d_model)
             
-            # 8. Fusion con X (información global del stack)
+            # 8. Fusion con X
             x_external_info = self.x_projection(X_to_process)
             combined = torch.cat([stack_vertical_info, x_external_info], dim=-1)
-            stack_embeddings = self.fusion_norm(self.fusion_layer(combined))
+            processed = self.fusion_norm(self.fusion_layer(combined))
+            
+            # Aplicamos la máscara S a los embeddings recién calculados
+            # Los stacks fuera de S se ponen en 0 (o un valor neutral)
+            current_s_mask = s_mask[missing_indices].unsqueeze(-1)
+            final_embeddings = (processed * current_s_mask).to(torch.float32)
+            
+            stack_embeddings[missing_indices] = final_embeddings
+            
+            # Guardar en memoria (siempre en float32)
+            for i, original_idx in enumerate(missing_indices):
+                memory[state_keys[original_idx]] = final_embeddings[i].detach()
 
         # 4. Recuperar los que ya estaban en memoria
         existing_indices = [i for i, key in enumerate(state_keys) if key in memory and i not in missing_indices]
@@ -115,55 +126,63 @@ class CPMPTransformer(Transformer):
 
         return stack_embeddings, memory
 
-    def decode(self, S, X, H, stack_embeddings):
-        batch_size, S_len, H_max, C_dim = S.shape
-        device = S.device
+    def decode(self, L, X, S, H, stack_embeddings):
+        batch_size, S_len, H_max, C_dim = L.shape
+        device = L.device
 
-        x_global = self.inter_stack_attention(stack_embeddings)
+        # 1. Máscara para la atención Inter-Stack
+        # El TransformerEncoder de PyTorch usa src_key_padding_mask
+        # donde True significa "ignorar este token"
+        inter_padding_mask = ~(torch.arange(S_len, device=device).expand(batch_size, S_len) < S.unsqueeze(1))
+        
+        # x_global solo contendrá info de los primeros S stacks
+        x_global = self.inter_stack_attention(stack_embeddings, src_key_padding_mask=inter_padding_mask)
         
         q_origin = self.origin_proj(x_global)
         k_dest = self.dest_proj(x_global)
         
         logits_matrix = torch.matmul(q_origin, k_dest.transpose(-1, -2)) / (self.d_model**0.5)
 
+        # 2. Máscaras de validez de movimiento
         mask_diag = torch.eye(S_len, device=device).bool().unsqueeze(0)
         
-        # 1. Origen vacío (Sigue igual)
-        is_origin_empty = (S == -1).all(dim=-1).all(dim=2) # (batch, S_len)
+        # NUEVA MÁSCARA: Bloquear cualquier stack fuera de S
+        # Si el índice de origen >= S o destino >= S, movimiento inválido
+        out_of_bounds = inter_padding_mask # [B, S_len] (True donde es inválido)
+        mask_out_S_origin = out_of_bounds.unsqueeze(2).expand(-1, -1, S_len)
+        mask_out_S_dest = out_of_bounds.unsqueeze(1).expand(-1, S_len, -1)
 
-        # 2. Destino lleno (Lógica para H como tensor)
-        # H viene como [h1, h2, ...]. Queremos el índice H-1.
-        # Ajustamos H para que tenga la forma adecuada para indexar: (B, 1, 1, 1)
-        # y luego expandirlo a la estructura de S.
+        # (Lógica anterior de vacío/lleno)
+        is_origin_empty = (L == -1).all(dim=-1).all(dim=2) 
         h_idx = (H - 1).view(batch_size, 1, 1, 1).expand(-1, S_len, 1, C_dim)
-        
-        # Extraemos la fila correspondiente a la altura H de cada stack
-        # target_height_slice tendrá forma (batch, S_len, 1, C_dim)
-        target_height_slice = torch.gather(S, 2, h_idx)
-        
-        # Eliminamos la dimensión extra de la altura y verificamos si está lleno
-        # is_dest_full tendrá forma (batch, S_len)
+        target_height_slice = torch.gather(L, 2, h_idx)
         is_dest_full = ~(target_height_slice.squeeze(2) == -1).all(dim=-1) 
         
-        # 3. Máscaras para la matriz de logits
-        mask_origin = is_origin_empty.unsqueeze(2).expand(-1, -1, S_len) # (B, S_len, S_len)
-        mask_dest = is_dest_full.unsqueeze(1).expand(-1, S_len, -1)     # (B, S_len, S_len)
+        mask_origin = is_origin_empty.unsqueeze(2).expand(-1, -1, S_len)
+        mask_dest = is_dest_full.unsqueeze(1).expand(-1, S_len, -1)
         
-        invalid_action_mask = mask_diag | mask_origin | mask_dest
+        # Unimos todas las restricciones
+        invalid_action_mask = (
+            mask_diag | 
+            mask_origin | 
+            mask_dest | 
+            mask_out_S_origin |  # No puedes mover desde un stack que no existe
+            mask_out_S_dest      # No puedes mover hacia un stack que no existe
+        )
         
         logits_matrix = logits_matrix.masked_fill(invalid_action_mask, -1e4)
-        
-        # El resto del código para aplanar los logits se mantiene igual...
+
+        # 3. Aplanar excluyendo la diagonal
         indices = torch.arange(S_len, device=device)
         src_grid = indices.view(-1, 1).repeat(1, S_len)
         dst_grid = indices.view(1, -1).repeat(S_len, 1)
-        mask_diag_flat = src_grid != dst_grid
+        mask_no_diag = src_grid != dst_grid
         
-        logits = logits_matrix[:, mask_diag_flat]
-
+        logits = logits_matrix[:, mask_no_diag].view(batch_size, -1)
+        
         return logits
     
-    def forward(self, S, X, H):
-        stack_embeddings, _ = self.encode(S, X, H)
-        logits = self.decode(S, X, H, stack_embeddings)
+    def forward(self, L, X, S, H):
+        stack_embeddings, _ = self.encode(L, X, S, H)
+        logits = self.decode(L, X, S, H, stack_embeddings)
         return logits
