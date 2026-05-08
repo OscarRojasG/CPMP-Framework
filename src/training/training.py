@@ -3,7 +3,7 @@ import torch
 import os
 import copy
 import json
-from settings import MODELS_FOLDER, HYPERPARAMETERS_FOLDER
+from settings import INSTANCE_FOLDER, MODELS_FOLDER, HYPERPARAMETERS_FOLDER
 from torch.amp import GradScaler, autocast
 from training.metrics import *
 import random
@@ -11,6 +11,7 @@ from generation.data import generate_data_rl, split_instances
 from preprocessing.dataset import load_dataset
 import torch.multiprocessing as mp
 import numpy as np
+from utils.utils import distribuir_suma_exacta
     
 class ModelScorer:
     def __init__(self, model):
@@ -215,6 +216,32 @@ class DataGenerationConfigRL():
         self.moves_adapter_config = moves_adapter_config
         self.num_workers = num_workers
 
+def split_instances(folders, train_size, test_size, seed):
+    # Mezcla aleatoria reproducible
+    random.seed(seed)
+    
+    instance_files = []
+    for instance_set in folders:
+        path = INSTANCE_FOLDER / instance_set
+        set_files = [os.path.join(path, f) for f in os.listdir(path)]
+        random.shuffle(set_files)
+        instance_files.append(set_files)
+
+    files_len = [len(files) for files in instance_files]
+    if sum(files_len) < train_size + test_size:
+        train_size, test_size = distribuir_suma_exacta([train_size, test_size], sum(files_len))
+
+    train_sizes = distribuir_suma_exacta(files_len, train_size)
+    test_sizes = distribuir_suma_exacta(files_len, test_size)
+
+    train_instances = []
+    test_instances = []
+    for i in range(len(instance_files)):
+        train_instances.append(instance_files[i][:train_sizes[i]])
+        test_instances.append(instance_files[i][train_sizes[i]:train_sizes[i] + test_sizes[i]])
+
+    return train_instances, test_instances
+
 def rl_train(model, iterations, datagen_config, epochs, train_size, test_size, batch_size, learning_rate, weight_decay, loss_functions, patience, metrics, seed=42):
     device = config_training(model, seed)
     train_set_file = "tmp_train.data"
@@ -223,8 +250,6 @@ def rl_train(model, iterations, datagen_config, epochs, train_size, test_size, b
     i = 0
 
     train_instances, test_instances = split_instances(datagen_config.instance_sets, train_size, test_size, seed)
-    train_instances = train_instances[:train_size]
-    test_instances = test_instances[:test_size]
 
     try:
         while True:
@@ -251,8 +276,8 @@ def rl_train(model, iterations, datagen_config, epochs, train_size, test_size, b
                 datagen_config.num_workers,
                 output_name=test_set_file)
             
-            train_set = load_dataset(train_set_file, max_size=train_size, verbose=False)
-            test_set = load_dataset(test_set_file, max_size=test_size, verbose=False)
+            train_set = load_dataset(train_set_file, verbose=False)
+            test_set = load_dataset(test_set_file, verbose=False)
 
             train_set._open_file()
             avg_cost_train = np.mean(train_set.file['C'])

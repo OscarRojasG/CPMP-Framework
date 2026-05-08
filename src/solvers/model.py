@@ -95,3 +95,6 @@ class ModelSolver(Solver):
         # Resultados finales
         results = [(l.unsorted_stacks == 0, l.steps) for l in layouts]
         return results
+    
+    def reset(self):
+        self.memory = None

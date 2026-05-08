@@ -1,7 +1,7 @@
 import numpy as np
 from generation.adapters.input.layout.layout_adapter import LayoutAdapter
 
-class Layout4D2FV2Adapter(LayoutAdapter):
+class Layout4D5FAdapter(LayoutAdapter):
     def __init__(self):
         super().__init__()
 
@@ -23,13 +23,15 @@ class Layout4D2FV2Adapter(LayoutAdapter):
 
                 pos = j / (H_stack - 1) if H_stack > 1 else 0
                 depth = j / (H - 1)
+                valid_top = layout.is_top_valid(i, j)
+                valid_bottom = layout.is_bottom_valid(i, j)
 
-                stack.append([normalized_c, pos, depth])
+                stack.append([normalized_c, pos, depth, float(valid_top), float(valid_bottom)])
             
             # Padding de Altura: Rellenamos con [-1.0, -1.0, -1.0] hasta H_max
             padding_size = H_max - len(stack)
             # Recortamos si excede H_max y añadimos padding si falta
-            padded_stack = stack[:H_max] + [[-1.0, -1.0, -1.0]] * max(0, padding_size)
+            padded_stack = stack + [[-1.0, -1.0, -1.0, -1.0, -1.0]] * max(0, padding_size)
             stacks_matrix.append(padded_stack)
 
         # 2. Padding de STACKS: Rellenamos con stacks vacíos hasta S_max
@@ -38,7 +40,7 @@ class Layout4D2FV2Adapter(LayoutAdapter):
         
         if stacks_to_add > 0:
             # Creamos stacks vacíos donde cada celda es [-1.0, -1.0, -1.0]
-            empty_stack = [[-1.0, -1.0, -1.0]] * H_max
+            empty_stack = [[-1.0, -1.0, -1.0, -1.0, -1.0]] * H_max
             for _ in range(stacks_to_add):
                 stacks_matrix.append(empty_stack)
         else:

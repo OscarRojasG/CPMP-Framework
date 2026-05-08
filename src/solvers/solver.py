@@ -31,3 +31,6 @@ class Solver(ABC):
             layouts.append(read_file(filepath, H))
         
         return self.solve_from_layouts(layouts, H, max_steps)
+    
+    def reset(self):
+        pass

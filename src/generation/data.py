@@ -32,6 +32,7 @@ def get_best_moves(layout, H, max_steps):
         lay_copies.append(lay_copy)
 
     results = worker_solver.solve_from_layouts(lay_copies, H, max_steps)
+    worker_solver.reset()
 
     best_moves = []
     min_cost = float('inf')
@@ -45,24 +46,24 @@ def get_best_moves(layout, H, max_steps):
         elif cost == min_cost:
             best_moves.append(move)
             
-    return best_moves, min_cost
+    return best_moves, min_cost + 1
 
 def generate_data_from_file(filepath):
     layout = read_instance(filepath, worker_H)
-    if layout.unsorted_stacks == 0: 
+    if layout.is_sorted():
         return None
 
     input_vec = worker_la_adapter.input_2_vec(layout, worker_H)
 
     best_moves, cost = get_best_moves(layout, worker_H, worker_max_steps)
-    if cost == 0 or len(best_moves) == 0:
+    if len(best_moves) == 0:
         return None
 
     output_vec = worker_ma_adapter.output_2_vec(best_moves, cost)
 
     return input_vec, output_vec, cost
 
-def generate_data(filepaths, input_adapter, output_adapter, init_worker, init_args, num_workers, output_name, verbose=True):
+def generate_data(filepaths, input_adapter, output_adapter, init_worker, init_args, num_workers):
     with ProcessPoolExecutor(
         max_workers=num_workers,
         initializer=init_worker,
@@ -88,6 +89,9 @@ def generate_data(filepaths, input_adapter, output_adapter, init_worker, init_ar
     input_data = input_adapter.get()
     output_data = output_adapter.get()
 
+    return input_data, output_data, costs
+
+def save_data(input_data, output_data, costs, output_name):
     output_path = DATA_FOLDER / f"{output_name}"
 
     with h5py.File(output_path, "w") as f:
@@ -106,8 +110,7 @@ def generate_data(filepaths, input_adapter, output_adapter, init_worker, init_ar
 
         f.create_dataset("C", data=np.stack(costs, dtype=np.int32))
 
-    if verbose:
-        print(f"Datos guardados en: {output_path} (Tamaño {input_adapter.count()})")
+    print(f"Datos guardados en: {output_path} (Tamaño {len(output_data[key])})")
 
 def init_worker(H, max_steps, input_adapter_config, output_adapter_config):
     global worker_la_adapter
@@ -136,7 +139,8 @@ def generate_data_sl(folders, H, max_steps, input_adapter_config, output_adapter
         output_name = folder + ".data"
         if output_name_prefix:
             output_name = output_name_prefix + "_" + output_name
-        generate_data(instance_files, input_adapter_config, output_adapter_config, init_worker_sl, init_args, num_workers, output_name, verbose)
+        input_data, output_data, costs = generate_data(instance_files, input_adapter_config, output_adapter_config, init_worker_sl, init_args, num_workers)
+        save_data(input_data, output_data, costs, output_name)
     
 def init_worker_rl(H, max_steps, model_cls, model_params, weights, input_adapter_config, output_adapter_config, batch_size):
     global worker_solver
@@ -150,21 +154,38 @@ def init_worker_rl(H, max_steps, model_cls, model_params, weights, input_adapter
     model.eval()
     worker_solver = ModelSolver(model, worker_la_adapter, batch_size)
 
-def generate_data_rl(instance_files, H, max_steps, input_adapter_config, output_adapter_config, model, batch_size, num_workers, output_name, verbose=True):
+def generate_data_rl(instance_files, H, max_steps, input_adapter_config, output_adapter_config, model, batch_size, num_workers, output_name):
     model_cls = model.__class__
     model_params = model.hyperparams
     weights = model.state_dict()
     
-    init_args = (H, max_steps, model_cls, model_params, weights, input_adapter_config, output_adapter_config, batch_size)
-    generate_data(instance_files, input_adapter_config, output_adapter_config, init_worker_rl, init_args, num_workers, output_name, verbose)
+    temp_inputs = {}
+    temp_outputs = {}
+    all_costs = []
 
-def split_instances(folders, p1, p2, seed):
+    for files, H_file in zip(instance_files, H):
+        init_args = (H_file, max_steps, model_cls, model_params, weights, input_adapter_config, output_adapter_config, batch_size)
+
+        input_data, output_data, costs = generate_data(files, input_adapter_config, output_adapter_config, init_worker_rl, init_args, num_workers)
+        
+        # Agrupamos los diccionarios en listas de arrays
+        for k, v in input_data.items():
+            temp_inputs.setdefault(k, []).append(v)
+        
+        for k, v in output_data.items():
+            temp_outputs.setdefault(k, []).append(v)
+            
+        all_costs.extend(costs)
+
+    all_input_data = {k: np.concatenate(v) for k, v in temp_inputs.items()}
+    all_output_data = {k: np.concatenate(v) for k, v in temp_outputs.items()}
+
+    save_data(all_input_data, all_output_data, all_costs, output_name)
+
+def split_instances(folder, p1, p2, seed):
     # 1. Preparación de archivos
-    instance_files = []
-    for folder in folders:
-        path = INSTANCE_FOLDER / folder
-        files = [os.path.join(folder, f) for f in os.listdir(path)]
-        instance_files.extend(files)
+    path = INSTANCE_FOLDER / folder
+    instance_files = [os.path.join(folder, f) for f in os.listdir(path)]
     
     # 2. Mezcla aleatoria reproducible
     random.seed(seed)

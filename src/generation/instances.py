@@ -35,9 +35,13 @@ class InstanceGenerator(ABC):
     
     def add_instance(self, instance):
         instance_hash = tuple(tuple(stack) for stack in instance)
-        if tuple(instance_hash) not in self.instance_set:
-            self.instances.append(instance)
-            self.instance_set.add(instance_hash)
+        if tuple(instance_hash) in self.instance_set: return
+
+        layout = Layout(instance, self.H)
+        if layout.is_sorted(): return
+        
+        self.instances.append(instance)
+        self.instance_set.add(instance_hash)
 
     @abstractmethod
     def generate_instances(self, amount):
