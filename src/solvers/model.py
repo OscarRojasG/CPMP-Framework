@@ -38,14 +38,20 @@ class ModelSolver(Solver):
         # Historial de estados visitados por cada layout individualmente
         visited_states_list = [set() for _ in range(num_layouts)]
         
+        # Conjunto de layouts descartados por acción inválida (quedan como "no resuelto")
+        discarded_indices = set()
+
         with torch.no_grad():
-            while any(not l.is_sorted() and l.steps < max_steps for l in layouts):
+            while any(
+                not l.is_sorted() and l.steps < max_steps and i not in discarded_indices
+                for i, l in enumerate(layouts)
+            ):
                 # Identificamos qué layouts aún necesitan procesarse
                 active_indices = [
-                    i for i, l in enumerate(layouts) 
-                    if not l.is_sorted() and l.steps < max_steps
+                    i for i, l in enumerate(layouts)
+                    if not l.is_sorted() and l.steps < max_steps and i not in discarded_indices
                 ]
-                
+
                 # Guardamos estados actuales de los layouts activos
                 for i in active_indices:
                     current_state = tuple(tuple(stack) for stack in layouts[i].stacks)
@@ -61,38 +67,47 @@ class ModelSolver(Solver):
                     batch_data_lists.append(data)
 
                 # Empaquetamos en tensores de batch: [batch_size, ...]
-                # zip(*batch_data_lists) agrupa por tipo de entrada del modelo
                 batch_inputs = [torch.cat(tensors, dim=0) for tensors in zip(*batch_data_lists)]
-                
+
                 # Inferencia en batch
                 stack_embeddings, self.memory = self.model.encode(*batch_inputs, memory=self.memory)
                 logits = self.model.decode(stack_embeddings, *batch_inputs)
-                
-                # Ordenamos índices de mejor a peor para cada layout en el batch
-                _, top_indices_batch = torch.sort(logits, dim=1, descending=True)
+
+                # Ordenamos índices de mejor a peor; capturamos también los valores para validar
+                top_values_batch, top_indices_batch = torch.sort(logits, dim=1, descending=True)
 
                 # Aplicamos la lógica de movimiento individualmente
                 for idx_in_batch, original_idx in enumerate(active_indices):
                     layout = layouts[original_idx]
                     top_indices = top_indices_batch[idx_in_batch]
+                    top_values  = top_values_batch[idx_in_batch]
                     visited_states = visited_states_list[original_idx]
 
                     for i in range(len(top_indices)):
-                        best_index = top_indices[i].item()
+                        best_index  = top_indices[i].item()
+                        best_value  = top_values[i].item()
+
+                        # --- Acción inválida enmascarada: descartar layout inmediatamente ---
+                        if best_value <= -1e4:
+                            discarded_indices.add(original_idx)
+                            break
+                        # -----------------------------------------------------------------
+
                         src = int(best_index / (S - 1))
-                        r = best_index % (S - 1)
+                        r   = best_index % (S - 1)
                         dst = r if r < src else r + 1
 
                         # Previsualización del movimiento
                         temp_layout = copy.deepcopy(layout)
                         temp_layout.move(src, dst)
                         next_state = tuple(tuple(stack) for stack in temp_layout.stacks)
-                        
+
                         if next_state not in visited_states:
                             layout.move(src, dst)
                             break
 
         # Resultados finales
+        # Los layouts descartados cuentan como "no resuelto" (False)
         results = [(l.unsorted_stacks == 0, l.steps) for l in layouts]
         return results
     
