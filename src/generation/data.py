@@ -53,13 +53,13 @@ def generate_data_from_file(filepath):
     if layout.is_sorted():
         return None
 
-    input_vec = worker_la_adapter.input_2_vec(layout, worker_H)
+    input_vec = worker_la_adapter.input_2_vec(layout, worker_H, worker_S_max, worker_H_max)
 
     best_moves, cost = get_best_moves(layout, worker_H, worker_max_steps)
     if len(best_moves) == 0:
         return None
 
-    output_vec = worker_ma_adapter.output_2_vec(best_moves, cost)
+    output_vec = worker_ma_adapter.output_2_vec(best_moves, cost, worker_S_max)
 
     return input_vec, output_vec, cost
 
@@ -112,11 +112,13 @@ def save_data(input_data, output_data, costs, output_name):
 
     print(f"Datos guardados en: {output_path} (Tamaño {len(output_data[key])})")
 
-def init_worker(H, max_steps, input_adapter_config, output_adapter_config):
+def init_worker(H, max_steps, input_adapter_config, output_adapter_config, S_max, H_max):
     global worker_la_adapter
     global worker_ma_adapter
     global worker_H
     global worker_max_steps
+    global worker_S_max
+    global worker_H_max
 
     la_class, *la_args = input_adapter_config
     ma_class, *ma_args = output_adapter_config
@@ -125,16 +127,18 @@ def init_worker(H, max_steps, input_adapter_config, output_adapter_config):
 
     worker_H = H
     worker_max_steps = max_steps
+    worker_S_max = S_max
+    worker_H_max = H_max
 
-def init_worker_sl(H, max_steps, input_adapter_config, output_adapter_config):
+def init_worker_sl(H, max_steps, input_adapter_config, output_adapter_config, S_max, H_max):
     global worker_solver
 
-    init_worker(H, max_steps, input_adapter_config, output_adapter_config)
+    init_worker(H, max_steps, input_adapter_config, output_adapter_config, S_max, H_max)
     worker_solver = FRGSolver()
 
-def generate_data_sl(folder, H, max_steps, input_adapter_config, output_adapter_config, num_workers, output_name_prefix=None):
+def generate_data_sl(folder, H, max_steps, input_adapter_config, output_adapter_config, num_workers, output_name_prefix=None, S_max=10, H_max=12):
     # Agrupamos los argumentos de inicialización
-    init_args = (H, max_steps, input_adapter_config, output_adapter_config)
+    init_args = (H, max_steps, input_adapter_config, output_adapter_config, S_max, H_max)
     
     # Construimos las rutas de las instancias dentro de la carpeta seleccionada
     folder_path = INSTANCE_FOLDER / folder
@@ -158,19 +162,19 @@ def generate_data_sl(folder, H, max_steps, input_adapter_config, output_adapter_
     # Guardamos los resultados
     save_data(input_data, output_data, costs, output_name)
     
-def init_worker_rl(H, max_steps, model_cls, model_params, weights, input_adapter_config, output_adapter_config, batch_size):
+def init_worker_rl(H, max_steps, model_cls, model_params, weights, input_adapter_config, output_adapter_config, batch_size, S_max, H_max):
     global worker_solver
 
     torch.set_num_threads(1) 
     torch.set_num_interop_threads(1)
 
-    init_worker(H, max_steps, input_adapter_config, output_adapter_config)
+    init_worker(H, max_steps, input_adapter_config, output_adapter_config, S_max, H_max)
     model = model_cls(**model_params)
     model.load_state_dict(weights)
     model.eval()
     worker_solver = ModelSolver(model, worker_la_adapter, batch_size)
 
-def generate_data_rl(instance_files, H, max_steps, input_adapter_config, output_adapter_config, model, batch_size, num_workers, output_name):
+def generate_data_rl(instance_files, H, max_steps, input_adapter_config, output_adapter_config, model, batch_size, num_workers, output_name, S_max=10, H_max=12):
     model_cls = model.__class__
     model_params = model.hyperparams
     weights = model.state_dict()
@@ -180,7 +184,7 @@ def generate_data_rl(instance_files, H, max_steps, input_adapter_config, output_
     all_costs = []
 
     for files, H_file in zip(instance_files, H):
-        init_args = (H_file, max_steps, model_cls, model_params, weights, input_adapter_config, output_adapter_config, batch_size)
+        init_args = (H_file, max_steps, model_cls, model_params, weights, input_adapter_config, output_adapter_config, batch_size, S_max, H_max)
 
         input_data, output_data, costs = generate_data(files, input_adapter_config, output_adapter_config, init_worker_rl, init_args, num_workers)
         
@@ -229,3 +233,5 @@ worker_la_adapter = None
 worker_ma_adapter = None
 worker_H = None
 worker_max_steps = None
+worker_S_max = None
+worker_H_max = None

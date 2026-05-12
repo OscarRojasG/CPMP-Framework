@@ -217,6 +217,7 @@ __marimo__/
 
 # Extra
 .vscode/
+/notebooks/testing/
 
 /instances/*
 /data/*
