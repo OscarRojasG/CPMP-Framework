@@ -1,5 +1,3 @@
-import os
-from settings import INSTANCE_FOLDER
 from cpmp.layout import Layout
 import random
 from abc import ABC, abstractmethod
@@ -20,14 +18,20 @@ class InstanceGenerator(ABC):
         for _ in range(S):
             stacks.append([])
 
+        available_numbers = list(range(1, N + 1))
+        if not sorted:
+            random.shuffle(available_numbers)
+
         for j in range(N):
-            s = random.randint(0,S-1)
-            while len(stacks[s])==H:
-                s = random.randint(0,S-1)
+            s = random.randint(0, S - 1)
+            while len(stacks[s]) == H:
+                s = random.randint(0, S - 1)
+            
             if sorted:
-                g = N - j
+                g = available_numbers.pop()
             else:
-                g = random.randint(1,N)
+                g = available_numbers.pop()
+                
             stacks[s].append(g)
 
         return stacks
