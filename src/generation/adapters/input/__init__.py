@@ -1,4 +1,3 @@
-from generation.adapters.input.gpi_adapter import GPIAdapter
 from generation.adapters.input.enriched_layout_adapter import EnrichedLayoutAdapter
 from generation.adapters.input.layout.layout_3D_adapter import Layout3DAdapter
 from generation.adapters.input.layout.layout_4D_adapter_V2 import Layout4DAdapterV2

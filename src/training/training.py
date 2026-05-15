@@ -208,15 +208,13 @@ def sl_train(model, epochs, dataset, train_size, test_size, batch_size, learning
     return train(model, epochs, train_set, test_set, batch_size, learning_rate, weight_decay, loss_functions, patience, metrics, device)
 
 class DataGenerationConfigRL():
-    def __init__(self, instance_sets, H, max_steps, layout_adapter_config, moves_adapter_config, num_workers, S_max=10, H_max=12):
+    def __init__(self, instance_sets, H, max_steps, layout_adapter_config, moves_adapter_config, num_workers):
         self.instance_sets = instance_sets
         self.H = H
         self.max_steps = max_steps
         self.layout_adapter_config = layout_adapter_config
         self.moves_adapter_config = moves_adapter_config
         self.num_workers = num_workers
-        self.S_max = S_max
-        self.H_max = H_max
 
 def split_instances(folders, train_size, test_size, seed):
     # Mezcla aleatoria reproducible
@@ -266,9 +264,7 @@ def rl_train(model, iterations, datagen_config, epochs, train_size, test_size, b
                 model,
                 batch_size,
                 datagen_config.num_workers,
-                output_name=train_set_file,
-                S_max=datagen_config.S_max,
-                H_max=datagen_config.H_max)
+                output_name=train_set_file)
             
             generate_data_rl(test_instances, 
                 datagen_config.H,
@@ -278,9 +274,7 @@ def rl_train(model, iterations, datagen_config, epochs, train_size, test_size, b
                 model,
                 batch_size,
                 datagen_config.num_workers,
-                output_name=test_set_file,
-                S_max=datagen_config.S_max,
-                H_max=datagen_config.H_max)
+                output_name=test_set_file)
             
             train_set = load_dataset(train_set_file, verbose=False)
             test_set = load_dataset(test_set_file, verbose=False)

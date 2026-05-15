@@ -7,7 +7,7 @@ class CostAdapter(OutputAdapter):
             "cost": np.float32
         })
     
-    def output_2_vec(self, moves, cost, S_max):
+    def output_2_vec(self, moves, cost):
         return np.log(cost)
     
     def add(self, output_data):

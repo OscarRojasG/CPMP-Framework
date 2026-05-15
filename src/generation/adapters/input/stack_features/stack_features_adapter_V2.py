@@ -3,9 +3,9 @@ from cpmp.layout import Layout
 import numpy as np
 
 class StackFeaturesAdapterV2(StackFeaturesAdapter):
-    def to_vec(self, layout: Layout, H: int, S_max: int = 10, H_max: int = 8):
+    def to_vec(self, layout: Layout, H: int):
         # 1. Inicializamos la matriz con -1.0 para todas las posiciones (S_max, 5)
-        X = np.full((S_max, 5), -1.0, dtype=np.float32)
+        X = np.full((self.S_max, 5), -1.0, dtype=np.float32)
         S = len(layout.stacks)
 
         # 2. Iteramos solo hasta el número de stacks reales
@@ -26,9 +26,9 @@ class StackFeaturesAdapterV2(StackFeaturesAdapter):
             X[i][2] = sorted_ratio
 
             S_min = 3
-            X[i][3] = (S - S_min) / (S_max - S_min)
+            X[i][3] = (S - S_min) / (self.S_max - S_min)
 
             H_min = 5
-            X[i][4] = (H - H_min) / (H_max - H_min) 
+            X[i][4] = (H - H_min) / (self.H_max - H_min) 
 
         return X

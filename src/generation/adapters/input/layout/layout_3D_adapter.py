@@ -2,10 +2,10 @@ import numpy as np
 from generation.adapters.input.layout.layout_adapter import LayoutAdapter
 
 class Layout3DAdapter(LayoutAdapter):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, S_max, H_max):
+        super().__init__(S_max, H_max)
 
-    def input_2_vec(self, layout, H, S_max=10, H_max=12):
+    def input_2_vec(self, layout, H):
         stacks_matrix = []
         
         # Obtenemos todos los valores para normalizar
@@ -15,22 +15,22 @@ class Layout3DAdapter(LayoutAdapter):
         # 1. Padding en la dimensión de ALTURA (Columnas de la matriz)
         for stack in layout.stacks:
             normalized_stack = [val / max_val for val in stack]
-            padding_size = H_max - len(normalized_stack)
+            padding_size = self.H_max - len(normalized_stack)
             # Aseguramos que no exceda H_max si el stack es más grande
-            padded_stack = normalized_stack[:H_max] + [-1] * max(0, padding_size)
+            padded_stack = normalized_stack[:self.H_max] + [-1] * max(0, padding_size)
             stacks_matrix.append(padded_stack)
         
         # 2. Padding en la dimensión de STACKS (Filas de la matriz)
         # Calculamos cuántas filas vacías (llenas de -1) necesitamos agregar
         num_current_stacks = len(stacks_matrix)
-        stacks_to_add = S_max - num_current_stacks
+        stacks_to_add = self.S_max - num_current_stacks
         
         if stacks_to_add > 0:
             # Creamos filas de tamaño H_max rellenas con -1
-            padding_rows = [[-1] * H_max for _ in range(stacks_to_add)]
+            padding_rows = [[-1] * self.H_max for _ in range(stacks_to_add)]
             stacks_matrix.extend(padding_rows)
         else:
             # Si hay más stacks de los permitidos, recortamos a S_max
-            stacks_matrix = stacks_matrix[:S_max]
+            stacks_matrix = stacks_matrix[:self.S_max]
             
         return (np.array(stacks_matrix, dtype=np.float32), )

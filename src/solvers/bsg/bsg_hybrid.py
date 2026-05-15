@@ -69,7 +69,7 @@ class BSGHybridSolver(Solver):
         # Preparación del batch de datos
         batch_data_lists = []
         for state in states:
-            data = list(self.input_adapter.input_2_vec(state, H, S, H))
+            data = list(self.input_adapter.input_2_vec(state, H))
             for j in range(len(data)):
                 val = data[j]
                 data[j] = torch.tensor([val]) if isinstance(val, (int, float)) else torch.from_numpy(val).unsqueeze(0)
@@ -96,8 +96,8 @@ class BSGHybridSolver(Solver):
                     break
 
                 best_index = top_indices[i].item()
-                src = int(best_index / (S - 1))
-                r = best_index % (S - 1)
+                src = int(best_index / (self.input_adapter.S_max - 1))
+                r = best_index % (self.input_adapter.S_max - 1)
                 dst = r if r < src else r + 1
 
                 # Previsualización del movimiento

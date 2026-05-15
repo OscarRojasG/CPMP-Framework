@@ -6,19 +6,19 @@ class EnrichedLayoutAdapter(InputAdapter):
     stack_adapter = None
     extra_data_adapter = None
 
-    def __init__(self, layout_adapter, stack_features_adapter):
+    def __init__(self, layout_adapter, stack_features_adapter, S_max, H_max):
         super().__init__({
             "L": np.float32,
             "X": np.float32,
             "S": np.int32,
             "H": np.int32
-        })
-        self.layout_adapter = layout_adapter()
-        self.stack_features_adapter = stack_features_adapter()
+        }, S_max, H_max)
+        self.layout_adapter = layout_adapter(S_max, H_max)
+        self.stack_features_adapter = stack_features_adapter(S_max, H_max)
 
-    def input_2_vec(self, layout: Layout, H: int, S_max: int = 10, H_max: int = 12):
-        L = self.layout_adapter.input_2_vec(layout, H, S_max, H_max)[0]
-        X = self.stack_features_adapter.to_vec(layout, H, S_max, H_max)
+    def input_2_vec(self, layout: Layout, H: int):
+        L = self.layout_adapter.input_2_vec(layout, H)[0]
+        X = self.stack_features_adapter.to_vec(layout, H)
         S = len(layout.stacks)
         return L, X, S, H
 
