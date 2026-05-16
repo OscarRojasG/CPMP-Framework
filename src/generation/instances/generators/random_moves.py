@@ -7,7 +7,8 @@ class RandomMovesGenerator(InstanceGenerator):
         self.r = r
 
     def generate_instances(self, amount):
-        while len(self.instances) < amount:
+        current_len = len(self.instances)
+        while len(self.instances) < amount + current_len:
             stacks = self.generate_stacks(self.H, self.S, self.N, sorted=True)
             stacks = self.random_moves(stacks, self.H, self.r)
             self.add_instance(stacks)
