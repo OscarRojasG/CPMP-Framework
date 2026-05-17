@@ -111,10 +111,11 @@ def val_epoch(model, val_loader, loss_functions, metrics_list, device):
     return losses, m_values
 
 def _train(model, epochs, train_set, test_set, batch_size, learning_rate, weight_decay, loss_functions, print_epoch_results, model_scorer, patience, metrics_list, device): 
-    # ... (inicialización de DataLoaders y optimizer igual que antes) ...
     num_workers = os.cpu_count()
-    train_loader = DataLoader(train_set, batch_size=batch_size, num_workers=num_workers, pin_memory=True, shuffle=True)
-    test_loader = DataLoader(test_set, batch_size=batch_size, num_workers=num_workers, pin_memory=True)
+    use_pin_memory = device.type in ['cuda', 'mps']
+
+    train_loader = DataLoader(train_set, batch_size=batch_size, num_workers=num_workers, pin_memory=use_pin_memory, shuffle=True)
+    test_loader = DataLoader(test_set, batch_size=batch_size, num_workers=num_workers, pin_memory=use_pin_memory)
     
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
     scaler = GradScaler(device.type)
@@ -208,12 +209,12 @@ def sl_train(model, epochs, dataset, train_size, test_size, batch_size, learning
     return train(model, epochs, train_set, test_set, batch_size, learning_rate, weight_decay, loss_functions, patience, metrics, device)
 
 class DataGenerationConfigRL():
-    def __init__(self, instance_sets, H, max_steps, layout_adapter_config, moves_adapter_config, num_workers):
+    def __init__(self, instance_sets, H, max_steps, input_adapter_config, output_adapter_config, num_workers):
         self.instance_sets = instance_sets
         self.H = H
         self.max_steps = max_steps
-        self.layout_adapter_config = layout_adapter_config
-        self.moves_adapter_config = moves_adapter_config
+        self.input_adapter_config = input_adapter_config
+        self.output_adapter_config = output_adapter_config
         self.num_workers = num_workers
 
 def split_instances(folders, train_size, test_size, seed):
@@ -259,8 +260,8 @@ def rl_train(model, iterations, datagen_config, epochs, train_size, test_size, b
             generate_data_rl(train_instances, 
                 datagen_config.H,
                 datagen_config.max_steps,
-                datagen_config.layout_adapter_config,
-                datagen_config.moves_adapter_config,
+                datagen_config.input_adapter_config,
+                datagen_config.output_adapter_config,
                 model,
                 batch_size,
                 datagen_config.num_workers,
@@ -269,8 +270,8 @@ def rl_train(model, iterations, datagen_config, epochs, train_size, test_size, b
             generate_data_rl(test_instances, 
                 datagen_config.H,
                 datagen_config.max_steps,
-                datagen_config.layout_adapter_config,
-                datagen_config.moves_adapter_config,
+                datagen_config.input_adapter_config,
+                datagen_config.output_adapter_config,
                 model,
                 batch_size,
                 datagen_config.num_workers,
