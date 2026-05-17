@@ -101,20 +101,20 @@ class CostPredictorTransformer(Transformer):
     def decode(self, stack_embeddings, L, X, S, H):
         batch_size, S_len, H_max, C_dim = L.shape
         device = L.device
-
+    
+        # Zeroing de stacks de padding antes del encoder
         inter_padding_mask = ~(torch.arange(S_len, device=device).expand(batch_size, S_len) < S.unsqueeze(1))
-
-        z = self.inter_stack_attention(stack_embeddings, src_key_padding_mask=inter_padding_mask)
-
-        # Logits de atención
-        attn_logits = self.cost_attention(z)  # [B, S_len, 1]
-
-        # Enmascarar padding con -inf antes del softmax
+        stack_embeddings = stack_embeddings * (~inter_padding_mask).unsqueeze(-1).float()
+    
+        # Inter-stack attention sin máscara
+        z = self.inter_stack_attention(stack_embeddings)
+    
+        # Attention pooling con enmascaramiento final
+        attn_logits = self.cost_attention(z)
         attn_logits = attn_logits.masked_fill(
-            inter_padding_mask.unsqueeze(-1), float("-inf")
+            inter_padding_mask.unsqueeze(-1), -1e4
         )
-
-        attn_weights = torch.softmax(attn_logits, dim=1)  # [B, S_len, 1]
-        z_global = torch.sum(z * attn_weights, dim=1)     # [B, d_model]
-
+        attn_weights = torch.softmax(attn_logits, dim=1)
+        z_global = torch.sum(z * attn_weights, dim=1)
+    
         return self.cost_head(z_global).squeeze(-1)
