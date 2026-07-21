@@ -20,9 +20,14 @@ class Solver(ABC):
 
     # Función optimizada para varias instancias
     # Retorna solved, steps
-    @abstractmethod
-    def solve_from_layouts(self, layout, H, max_steps):
-        pass
+    def solve_from_layouts(self, layouts, H, max_steps):
+        results = []
+        for layout in layouts:
+            r = self.solve_from_layout(layout, H, max_steps)
+            r = [r[0], r[1]]
+            results.append(r)
+
+        return results
     
     def solve_from_folder(self, folder, H, max_steps):
         layouts = []

@@ -122,6 +122,25 @@ class Layout:
             if sorted == True: self.unsorted_stacks -= 1
             else: self.unsorted_stacks += 1
         return sorted
+    
+    def undo_move(self, i, j):
+        """Deshace un movimiento de 'j' (dst) de vuelta a 'i' (src)"""
+        # Ajustamos los contadores de stacks llenos
+        if len(self.stacks[i]) == self.H - 1: self.full_stacks += 1
+        if len(self.stacks[j]) == self.H: self.full_stacks -= 1
+        
+        c = self.stacks[j].pop()
+        self.stacks[i].append(c)
+        
+        # Recalculamos si el stack está ordenado
+        self.sorted_elements[i] = compute_sorted_elements(self.stacks[i])
+        self.sorted_elements[j] = compute_sorted_elements(self.stacks[j])
+        self.is_sorted_stack(i)
+        self.is_sorted_stack(j)
+        
+        self.steps -= 1
+        self.current_step -= 1
+        self.moves.pop() # Eliminamos el movimiento del historial
 
     
 def read_file(file, H):
