@@ -42,4 +42,4 @@ class Layout4DAdapterV1(LayoutAdapter):
             stacks_matrix = stacks_matrix[:self.S_max]
 
         # La salida tendrá un shape de (S_max, H_max, 3)
-        return (np.array(stacks_matrix, dtype=np.float32), )
+        return np.array(stacks_matrix, dtype=np.float32), len(layout.stacks), H
