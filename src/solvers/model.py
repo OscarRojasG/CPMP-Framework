@@ -10,6 +10,7 @@ class ModelSolver(Solver):
         self.model = model
         self.input_adapter = input_adapter
         self.batch_size = batch_size
+        self.device = next(model.parameters()).device
 
         # Diccionario de embeddings
         self.memory = None
@@ -63,7 +64,10 @@ class ModelSolver(Solver):
                     data = list(self.input_adapter.input_2_vec(layouts[i], H))
                     for j in range(len(data)):
                         val = data[j]
-                        data[j] = torch.tensor([val]) if isinstance(val, (int, float)) else torch.from_numpy(val).unsqueeze(0)
+                        if isinstance(val, (int, float)):
+                            data[j] = torch.tensor([val], device=self.device)
+                        else:
+                            data[j] = torch.from_numpy(val).unsqueeze(0).to(self.device)
                     batch_data_lists.append(data)
 
                 # Empaquetamos en tensores de batch: [batch_size, ...]

@@ -3,4 +3,5 @@ from instances.generators.random_moves import RandomMovesGenerator
 from instances.generators.uniform_cost import UniformCostGenerator
 from instances.generators.full_random import FullRandomGenerator
 from instances.generators.uniform_frg import UniformFRGGenerator
+from instances.generators.cv import CVGenerator
 from instances.generators.uniform_empirical import FRGUniformEmpiricalGenerator, ModelUniformEmpiricalGenerator

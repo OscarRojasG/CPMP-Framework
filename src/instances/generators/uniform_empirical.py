@@ -172,7 +172,7 @@ class UniformEmpiricalGenerator(InstanceGenerator):
                     if instancias_aceptadas >= amount:
                         break
 
-        return self.instances[:amount]
+        return self.instances[-amount:]
 
     def _burn_in(self, batch_size=100, stagnation_patience=3, threshold=0.5):
         k_seq = self._fibonacci_gen()
