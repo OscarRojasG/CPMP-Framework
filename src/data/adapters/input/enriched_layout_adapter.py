@@ -1,4 +1,4 @@
-from generation.adapters.input.input_adapter import InputAdapter
+from data.adapters.input.input_adapter import InputAdapter
 import numpy as np
 from cpmp.layout import Layout
 

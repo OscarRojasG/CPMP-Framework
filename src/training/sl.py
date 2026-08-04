@@ -2,20 +2,13 @@ from torch.utils.data import DataLoader, Subset
 import torch
 import os
 import copy
-import json
-from settings import INSTANCE_FOLDER, MODELS_FOLDER, HYPERPARAMETERS_FOLDER
-from torch.amp import GradScaler, autocast
 from training.metrics import *
 import random
-from generation.data import generate_data_rl, split_instances
-from preprocessing.dataset import load_dataset
-import torch.multiprocessing as mp
 import numpy as np
-from utils.utils import distribuir_suma_exacta
 from sklearn.model_selection import train_test_split
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import h5py
-from dataclasses import dataclass
+from training.common import LRConfig
     
 class ModelScorer:
     def __init__(self, model):
@@ -55,14 +48,7 @@ class ModelScorer:
     def get_last_update_epoch(self, metric):
         return self.best_models[metric]["epoch"]
     
-@dataclass
-class LRConfig:
-    start: float            # Tasa de aprendizaje inicial
-    factor: float = 0.5     # Factor de reducción
-    patience: int = 999999  # Épocas sin mejora antes de reducir el LR
-    min: float = 0.0        # Tasa de aprendizaje mínima permitida
-    
-def train_epoch(model, train_loader, optimizer, loss_functions, metrics_list, device, scaler):
+def train_epoch(model, train_loader, optimizer, loss_functions, metrics_list, device, gradient_clip):
     """
     metrics_list: Lista de listas. metrics_list[i] son las métricas para la salida i.
     """
@@ -74,24 +60,29 @@ def train_epoch(model, train_loader, optimizer, loss_functions, metrics_list, de
 
         optimizer.zero_grad(set_to_none=True)
 
-        with autocast(device.type):
-            logits_list = model(*inputs)
-            if not isinstance(logits_list, (list, tuple)):
-                logits_list = [logits_list]
+        logits_list = model(*inputs)
+        if not isinstance(logits_list, (list, tuple)):
+            logits_list = [logits_list]
 
-            total_loss = 0
-            # Iteramos por cada salida del modelo
-            for i, (lf, logits, target) in enumerate(zip(loss_functions, logits_list, targets)):
-                # 1. Pérdida
-                total_loss += lf.step(logits, target)
-                
-                # 2. Métricas específicas de esta salida
-                for metric in metrics_list[i]:
-                    metric.step(logits, target)
+        total_loss = 0
+        # Iteramos por cada salida del modelo
+        for i, (lf, logits, target) in enumerate(zip(loss_functions, logits_list, targets)):
+            # 1. Pérdida
+            total_loss += lf.step(logits, target)
+            
+            # 2. Métricas específicas de esta salida
+            for metric in metrics_list[i]:
+                metric.step(logits, target)
 
-        scaler.scale(total_loss).backward()
-        scaler.step(optimizer)
-        scaler.update()
+        # Computar gradientes
+        total_loss.backward()
+
+        # Gradient clipping si está configurado
+        if gradient_clip is not None:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clip)
+            
+        # Optimizar
+        optimizer.step()
 
     # Computar resultados finales de la época
     losses = [lf.compute() for lf in loss_functions]
@@ -121,7 +112,7 @@ def val_epoch(model, val_loader, loss_functions, metrics_list, device):
     
     return losses, m_values
 
-def _train(model, epochs, train_set, test_set, batch_size, lr_config: LRConfig, weight_decay, loss_functions, print_epoch_results, model_scorer, patience, metrics_list, device): 
+def _train(model, epochs, train_set, test_set, batch_size, lr_config: LRConfig, weight_decay, loss_functions, print_epoch_results, model_scorer, patience, metrics_list, device, gradient_clip): 
     num_workers = os.cpu_count()
     use_pin_memory = device.type in ['cuda', 'mps']
 
@@ -133,15 +124,13 @@ def _train(model, epochs, train_set, test_set, batch_size, lr_config: LRConfig, 
     
     # Configuramos el scheduler
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=lr_config.factor, patience=lr_config.patience, min_lr=lr_config.min)
-    
-    scaler = GradScaler(device.type)
 
     train_metrics, val_metrics = EpochMetrics(), EpochMetrics()
     primary_loss = loss_functions[0]
 
     for epoch in range(1, epochs + 1):
         # --- TRAIN ---
-        train_loss_vals, train_m_vals = train_epoch(model, train_loader, optimizer, loss_functions, metrics_list, device, scaler)
+        train_loss_vals, train_m_vals = train_epoch(model, train_loader, optimizer, loss_functions, metrics_list, device, gradient_clip)
         
         for lf, val in zip(loss_functions, train_loss_vals): 
             train_metrics.add_value(lf, val)
@@ -244,7 +233,7 @@ def config_training(model, seed):
     model = model.to(device)
     return device
 
-def train(model, epochs, train_set, test_set, batch_size, lr_config: LRConfig, weight_decay, loss_functions, patience, metrics, device):
+def train(model, epochs, train_set, test_set, batch_size, lr_config: LRConfig, weight_decay, loss_functions, patience, metrics, device, gradient_clip):
     model_scorer = ModelScorer(model)
     primary_loss = loss_functions[0]
 
@@ -264,8 +253,8 @@ def train(model, epochs, train_set, test_set, batch_size, lr_config: LRConfig, w
             print(f"{' | ' if i > 0 else '    '}{metric.name}: {metric.format(value)}", end='')
         print()
 
-    # Pasamos lr_config en lugar de learning_rate
-    _train(model, epochs, train_set, test_set, batch_size, lr_config, weight_decay, loss_functions, print_epoch_results, model_scorer, patience, metrics, device)
+    # Pasamos lr_config en lugar de learning_rate, y ahora también gradient_clip
+    _train(model, epochs, train_set, test_set, batch_size, lr_config, weight_decay, loss_functions, print_epoch_results, model_scorer, patience, metrics, device, gradient_clip)
     
     weights = model_scorer.get_best_weights_by_metric(primary_loss)
     model.load_state_dict(weights)
@@ -273,156 +262,7 @@ def train(model, epochs, train_set, test_set, batch_size, lr_config: LRConfig, w
 
     return model
 
-def sl_train(model, epochs, dataset, train_size, test_size, batch_size, lr_config, weight_decay, loss_functions, patience, metrics, seed=42):
+def sl_train(model, epochs, dataset, train_size, test_size, batch_size, lr_config, weight_decay, loss_functions, patience, metrics, gradient_clip=None, seed=42):
     device = config_training(model, seed)
     train_set, test_set = generate_sets(dataset, train_size, test_size, seed)
-    return train(model, epochs, train_set, test_set, batch_size, lr_config, weight_decay, loss_functions, patience, metrics, device)
-
-class DataGenerationConfigRL():
-    def __init__(self, instance_sets, H, max_steps, input_adapter_config, output_adapter_config, num_workers):
-        self.instance_sets = instance_sets
-        self.H = H
-        self.max_steps = max_steps
-        self.input_adapter_config = input_adapter_config
-        self.output_adapter_config = output_adapter_config
-        self.num_workers = num_workers
-
-def split_instances(folders, train_size, test_size, seed):
-    # Mezcla aleatoria reproducible
-    random.seed(seed)
-    
-    instance_files = []
-    for instance_set in folders:
-        path = INSTANCE_FOLDER / instance_set
-        set_files = [os.path.join(path, f) for f in os.listdir(path)]
-        random.shuffle(set_files)
-        instance_files.append(set_files)
-
-    files_len = [len(files) for files in instance_files]
-    if sum(files_len) < train_size + test_size:
-        train_size, test_size = distribuir_suma_exacta([train_size, test_size], sum(files_len))
-
-    train_sizes = distribuir_suma_exacta(files_len, train_size)
-    test_sizes = distribuir_suma_exacta(files_len, test_size)
-
-    train_instances = []
-    test_instances = []
-    for i in range(len(instance_files)):
-        train_instances.append(instance_files[i][:train_sizes[i]])
-        test_instances.append(instance_files[i][train_sizes[i]:train_sizes[i] + test_sizes[i]])
-
-    return train_instances, test_instances
-
-def rl_train(model, iterations, datagen_config, epochs, train_size, test_size, batch_size, lr_config, weight_decay, loss_functions, patience, metrics, seed=42):
-    device = config_training(model, seed)
-    train_set_file = "tmp_train.data"
-    test_set_file = "tmp_test.data"
-    last_avg_cost_test = None
-    i = 0
-
-    train_instances, test_instances = split_instances(datagen_config.instance_sets, train_size, test_size, seed)
-
-    try:
-        while True:
-            if i > 0: print()
-
-            mp.set_start_method('spawn', force=True)
-            generate_data_rl(train_instances, 
-                datagen_config.H,
-                datagen_config.max_steps,
-                datagen_config.input_adapter_config,
-                datagen_config.output_adapter_config,
-                model,
-                batch_size,
-                datagen_config.num_workers,
-                output_name=train_set_file)
-            
-            generate_data_rl(test_instances, 
-                datagen_config.H,
-                datagen_config.max_steps,
-                datagen_config.input_adapter_config,
-                datagen_config.output_adapter_config,
-                model,
-                batch_size,
-                datagen_config.num_workers,
-                output_name=test_set_file)
-            
-            train_set = load_dataset(train_set_file, verbose=False)
-            test_set = load_dataset(test_set_file, verbose=False)
-
-            # EXTRAEMOS DATOS DE TRAIN
-            train_set._open_file()
-            # Leemos el dataset como arreglo a memoria con [:]
-            real_costs_train = train_set.file['realCost'][:] 
-            # np.nanmean calcula el promedio ignorando los NaN
-            avg_cost_train = np.nanmean(real_costs_train)
-            # Contamos cuántos elementos NO son NaN
-            solved_train = np.count_nonzero(~np.isnan(real_costs_train))
-            total_train = len(real_costs_train)
-            train_set.close()
-
-            # EXTRAEMOS DATOS DE TEST
-            test_set._open_file()
-            real_costs_test = test_set.file['realCost'][:]
-            avg_cost_test = np.nanmean(real_costs_test)
-            solved_test = np.count_nonzero(~np.isnan(real_costs_test))
-            total_test = len(real_costs_test)
-            test_set.close()
-
-            print(f"Tamaño datasets | Train: {len(train_set)} | Test: {len(test_set)}")
-            print(f"Instancias resueltas | Train: {solved_train}/{total_train} ({(solved_train/total_train)*100:.1f}%) | Test: {solved_test}/{total_test} ({(solved_test/total_test)*100:.1f}%)")
-            print(f"Costo promedio | Train: {avg_cost_train:.2f} | Test: {avg_cost_test:.2f}")
-
-            if last_avg_cost_test:
-                current_cost_red = -(avg_cost_test - last_avg_cost_test)
-                total_cost_red = -(avg_cost_test - start_avg_cost_test)
-                current_gap = current_cost_red / last_avg_cost_test * 100
-                total_gap = total_cost_red / start_avg_cost_test * 100
-
-                print(f"Reducción del Costo: {current_cost_red:.2f} (acumulado {total_cost_red:.2f})")
-                print(f"Reducción del Gap: {current_gap:.2f}% (acumulado {total_gap:.2f}%)")
-
-                if avg_cost_test >= last_avg_cost_test:
-                    print(f"Early stopping en iteración {i+1}")
-                    break
-            else:
-                start_avg_cost_test = avg_cost_test
-
-            last_avg_cost_test = avg_cost_test
-            best_weights = model.state_dict()
-
-            if i == iterations: break
-            model = train(model, epochs, train_set, test_set, batch_size, lr_config, weight_decay, loss_functions, patience, metrics, device)
-            i += 1
-
-        model.load_state_dict(best_weights)
-        return model
-    
-    finally:
-        if os.path.exists(train_set_file):
-            os.remove(train_set_file)
-        if os.path.exists(test_set_file):
-            os.remove(test_set_file)
-
-def save_model(model, model_name):
-    os.makedirs(HYPERPARAMETERS_FOLDER, exist_ok=True)
-    with open(str(HYPERPARAMETERS_FOLDER / model_name) + ".json", 'w') as f:
-        json.dump(model.hyperparams, f, indent=4)
-
-    os.makedirs(MODELS_FOLDER, exist_ok=True)
-    weights = model.state_dict()
-    torch.save(weights, str(MODELS_FOLDER / model_name) + ".pth")
-    print(f"✅ Modelo guardado en {MODELS_FOLDER / model_name}.pth")
-
-def load_hyperparams(model_name):
-    with open(str(HYPERPARAMETERS_FOLDER / model_name) + ".json", 'r') as f:
-        return json.load(f)
-
-def load_model(model_class: object, model_name):
-    with open(str(HYPERPARAMETERS_FOLDER / model_name) + ".json", 'r') as f:
-        hyperparams = json.load(f)
-
-    model = model_class(**hyperparams)
-    model.load_state_dict(torch.load(str(MODELS_FOLDER / model_name) + ".pth", weights_only=True, map_location=torch.device('cpu')), strict=True)
-    model.eval()
-    return model
+    return train(model, epochs, train_set, test_set, batch_size, lr_config, weight_decay, loss_functions, patience, metrics, device, gradient_clip)

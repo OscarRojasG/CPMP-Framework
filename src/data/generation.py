@@ -7,7 +7,6 @@ import numpy as np
 from concurrent.futures import ProcessPoolExecutor
 from solvers.model import ModelSolver
 import torch
-import random
 
 def get_feasible_moves(layout):
     moves = []
@@ -28,6 +27,7 @@ def get_moves_costs(layout, H, max_steps):
     for (i, j) in moves:
         lay_copy = copy.deepcopy(layout)
         lay_copy.move(i, j)
+        lay_copy.steps = 0
         lay_copies.append(lay_copy)
 
     results = worker_solver.solve_from_layouts(lay_copies, H, max_steps)
@@ -60,11 +60,7 @@ def generate_data_from_file(filepath):
 
     output_vec = worker_ma_adapter.output_2_vec(moves_costs)
 
-    # Obtenemos el costo real evaluando el layout actual directamente
-    solved, cost, _ = worker_solver.solve_from_layout(layout, worker_H, worker_max_steps)
-    real_cost = cost if solved else np.nan
-
-    return input_vec, output_vec, best_cost, real_cost
+    return input_vec, output_vec, best_cost
 
 def generate_data(filepaths, input_adapter, output_adapter, init_worker, init_args, num_workers, verbose=False):
     if num_workers is None:
@@ -80,11 +76,9 @@ def generate_data(filepaths, input_adapter, output_adapter, init_worker, init_ar
         initializer=init_worker,
         initargs=init_args
     ) as executor:
-        # Iteramos sobre el generador en lugar de empaquetarlo en list() de golpe
         for i, result in enumerate(executor.map(generate_data_from_file, filepaths), 1):
             results.append(result)
             
-            # Imprime el progreso cada 10% o cuando llegue al último archivo
             if verbose and (i % max(1, total_files // 10) == 0 or i == total_files):
                 print(f"Progreso: {i}/{total_files} archivos procesados.")
 
@@ -94,25 +88,23 @@ def generate_data(filepaths, input_adapter, output_adapter, init_worker, init_ar
     output_adapter = ma_class(*ma_args)
 
     costs = []
-    real_costs = []
     for result in results:
         if result is None:
             continue
 
-        input_vec, output_vec, cost, real_cost = result
+        input_vec, output_vec, cost = result
         input_adapter.add(input_vec)
         output_adapter.add(output_vec)
         costs.append(cost)
-        real_costs.append(real_cost)
 
     input_data = input_adapter.get()
     output_data = output_adapter.get()
 
     if verbose:
         print("Generación de datos finalizada con éxito.")
-    return input_data, output_data, costs, real_costs
+    return input_data, output_data, costs
 
-def save_data(input_data, output_data, costs, output_name, real_costs=None): 
+def save_data(input_data, output_data, costs, output_name): 
     output_path = DATA_FOLDER / f"{output_name}"
 
     with h5py.File(output_path, "w") as f:
@@ -130,12 +122,8 @@ def save_data(input_data, output_data, costs, output_name, real_costs=None):
         g_output.attrs['key_order'] = [k for k in output_keys]
 
         f.create_dataset("C", data=np.stack(costs, dtype=np.int32))
-        
-        # MODIFICADO: Cambiamos a np.float32 para poder almacenar np.nan
-        if real_costs is not None:
-            f.create_dataset("realCost", data=np.stack(real_costs, dtype=np.float32))
 
-    print(f"Datos guardados en: {output_path} (Tamaño {len(output_data[key])})")
+    print(f"Datos guardados en: {output_path} (Tamaño {len(costs)})")
 
 def init_worker(H, max_steps, input_adapter_config, output_adapter_config):
     global worker_la_adapter
@@ -151,7 +139,7 @@ def init_worker(H, max_steps, input_adapter_config, output_adapter_config):
     worker_H = H
     worker_max_steps = max_steps
 
-def init_worker_sl(H, max_steps, input_adapter_config, output_adapter_config, solver_config):
+def init_worker_solver(H, max_steps, input_adapter_config, output_adapter_config, solver_config):
     global worker_solver
 
     init_worker(H, max_steps, input_adapter_config, output_adapter_config)
@@ -159,7 +147,7 @@ def init_worker_sl(H, max_steps, input_adapter_config, output_adapter_config, so
     solver_class, *solver_args = solver_config
     worker_solver = solver_class(*solver_args)
 
-def generate_data_sl(folder, H, max_steps, input_adapter_config, output_adapter_config, solver_config, num_workers, output_name_prefix=None):
+def generate_data_solver(folder, H, max_steps, input_adapter_config, output_adapter_config, solver_config, num_workers, output_name_prefix=None):
     init_args = (H, max_steps, input_adapter_config, output_adapter_config, solver_config)
     
     folder_path = INSTANCE_FOLDER / folder
@@ -169,21 +157,19 @@ def generate_data_sl(folder, H, max_steps, input_adapter_config, output_adapter_
     if output_name_prefix:
         output_name = f"{output_name_prefix}_{output_name}"
     
-    # MODIFICADO: Ignoramos la variable real_costs (el 4to valor de retorno) usando "_"
-    input_data, output_data, costs, _ = generate_data(
+    input_data, output_data, costs = generate_data(
         instance_files, 
         input_adapter_config, 
         output_adapter_config, 
-        init_worker_sl, 
+        init_worker_solver, 
         init_args, 
         num_workers,
         verbose=True
     )
     
-    # save_data se llama igual, manteniendo la compatibilidad hacia atrás para SL
     save_data(input_data, output_data, costs, output_name)
     
-def init_worker_rl(H, max_steps, model_cls, model_params, weights, input_adapter_config, output_adapter_config, batch_size):
+def init_worker_model(H, max_steps, model_cls, model_params, weights, input_adapter_config, output_adapter_config, batch_size):
     global worker_solver
 
     torch.set_num_threads(1) 
@@ -195,63 +181,28 @@ def init_worker_rl(H, max_steps, model_cls, model_params, weights, input_adapter
     model.eval()
     worker_solver = ModelSolver(model, worker_la_adapter, batch_size)
 
-def generate_data_rl(instance_files, H, max_steps, input_adapter_config, output_adapter_config, model, batch_size, num_workers, output_name, verbose=False):
+def generate_data_model(folder, H, max_steps, input_adapter_config, output_adapter_config, model, batch_size, num_workers, output_name, verbose=False):
     model_cls = model.__class__
     model_params = model.hyperparams
     weights = model.state_dict()
     
-    temp_inputs = {}
-    temp_outputs = {}
-    all_costs = []
-    all_real_costs = [] # NUEVO
-
-    for files, H_file in zip(instance_files, H):
-        init_args = (H_file, max_steps, model_cls, model_params, weights, input_adapter_config, output_adapter_config, batch_size)
-
-        # MODIFICADO: Recibimos real_costs
-        input_data, output_data, costs, real_costs = generate_data(files, input_adapter_config, output_adapter_config, init_worker_rl, init_args, num_workers, verbose)
-        
-        for k, v in input_data.items():
-            temp_inputs.setdefault(k, []).append(v)
-        
-        for k, v in output_data.items():
-            temp_outputs.setdefault(k, []).append(v)
-            
-        all_costs.extend(costs)
-        all_real_costs.extend(real_costs) # NUEVO
-
-    all_input_data = {k: np.concatenate(v) for k, v in temp_inputs.items()}
-    all_output_data = {k: np.concatenate(v) for k, v in temp_outputs.items()}
-
-    # MODIFICADO: Pasamos el argumento adicional de real_costs
-    save_data(all_input_data, all_output_data, all_costs, output_name, real_costs=all_real_costs)
-
-def split_instances(folder, p1, p2, seed):
-    # 1. Preparación de archivos
-    path = INSTANCE_FOLDER / folder
-    instance_files = [os.path.join(folder, f) for f in os.listdir(path)]
+    folder_path = INSTANCE_FOLDER / folder
+    instance_files = [os.path.join(folder_path, f) for f in os.listdir(folder_path)]
     
-    # 2. Mezcla aleatoria reproducible
-    random.seed(seed)
-    random.shuffle(instance_files)
+    init_args = (H, max_steps, model_cls, model_params, weights, input_adapter_config, output_adapter_config, batch_size)
+    input_data, output_data, costs = generate_data(
+        instance_files, 
+        input_adapter_config, 
+        output_adapter_config, 
+        init_worker_model, 
+        init_args, 
+        num_workers, 
+        verbose
+    )
     
-    # 3. Normalización de p1 y p2
-    total_p = p1 + p2
-    p1_norm = p1 / total_p
-    
-    # 4. Cálculo del índice de división
-    total_files = len(instance_files)
-    limit = int(total_files * p1_norm)
-    
-    # 5. Segmentación (Slicing)
-    # list1 toma desde el inicio hasta 'limit'
-    # list2 toma desde 'limit' hasta el final (asegurando el uso de todos los archivos)
-    list1 = instance_files[:limit]
-    list2 = instance_files[limit:]
-    
-    return list1, list2
+    save_data(input_data, output_data, costs, output_name)
 
-# Variable globales
+# Variables globales
 worker_solver = None
 worker_la_adapter = None
 worker_ma_adapter = None

@@ -13,7 +13,7 @@ import torch.nn.functional as F
 
 from cpmp.layout import Layout
 from solvers.model import ModelSolver
-from training.sl.training import save_model
+from training.common import save_model, LRConfig
 
 # =====================================================================
 # CONFIGURACIÓN
@@ -29,9 +29,7 @@ class POMOConfig:
     grad_clip: float = 1.0          # Límite para la norma del gradiente
     minibatch_size: int = 2048      # Tamaño de batch en la fase de replay (forward plano)
     eval_interval: int = 100        # Frecuencia de evaluación en el dev-set
-    patience: int = 15              # Evaluaciones sin mejora antes de hacer rollback
-    rollback_patience: int = 3      # Límite de rollbacks consecutivos sin mejora antes de parar
-    target_normalized_entropy: float = 0.20 # Temperatura objetivo para la entropía normalizada
+    patience: int = 15              # Evaluaciones sin mejora antes de parar
 
 @torch.no_grad()
 def sample_pomo_rollouts(
@@ -40,9 +38,8 @@ def sample_pomo_rollouts(
     k_rollouts: int, 
     max_steps_dict: Dict[Tuple[int, int], int], 
     input_adapter_config: Tuple[Any, ...], 
-    temperature: float, 
     device: torch.device
-) -> Tuple[List[List[torch.Tensor]], torch.Tensor, torch.Tensor, List[Tuple[int, int]], List[int], torch.Tensor, float]:
+) -> Tuple[List[torch.Tensor], torch.Tensor, torch.Tensor, List[Tuple[int, int]], torch.Tensor, torch.Tensor, float]:
     """
     Juega K partidas en paralelo para cada instancia de la lista usando muestreo multinomial.
     Retorna los historiales y la entropía normalizada promedio del muestreo.
@@ -60,16 +57,16 @@ def sample_pomo_rollouts(
         combo = (len(inst.stacks), inst.H)
         max_s = max_steps_dict.get(combo, 150)
         for _ in range(k_rollouts):
-            layouts.append(copy.deepcopy(inst))
+            layouts.append(Layout([list(s) for s in inst.stacks], inst.H))
             combo_ids.append(combo)
             max_steps_array.append(max_s)
             
     active_mask = np.ones(total_envs, dtype=bool)
     steps_taken = np.zeros(total_envs, dtype=int)
     
-    states_history = []
-    actions_history = []
-    rollout_idx_history = []
+    flat_inputs_steps = []
+    flat_actions = []
+    flat_row = []
     norm_entropy_history = [] 
     
     # 2. Bucle de simulación paralela
@@ -94,15 +91,10 @@ def sample_pomo_rollouts(
         stack_embeddings, _ = model.encode(*batch_inputs)
         logits = model.decode(stack_embeddings, *batch_inputs)
         
-        # --- C. Enmascaramiento y Temperatura ---
-        # El modelo internamente asigna valores ~ -1e4 a los movimientos inválidos.
+        # --- C. Enmascaramiento ---
         is_valid = logits > -100.0
+        probs = torch.softmax(logits.float(), dim=-1)
         
-        # Aplicar temperatura SOLO a los logits válidos
-        masked_logits = torch.where(is_valid, logits / temperature, logits)
-        probs = torch.softmax(masked_logits.float(), dim=-1)
-        
-        # Cálculo de Entropía Normalizada
         valid_counts = is_valid.sum(dim=-1).float()
         max_entropies = torch.log(torch.clamp(valid_counts, min=1.0))
         log_probs = torch.log(probs + 1e-8)
@@ -112,6 +104,10 @@ def sample_pomo_rollouts(
         
         # --- D. Muestreo POMO ---
         sampled_actions = torch.multinomial(probs, num_samples=1).squeeze(-1)
+        
+        flat_inputs_steps.append([b.cpu() for b in batch_inputs])
+        flat_actions.append(sampled_actions.cpu())
+        flat_row.append(torch.tensor(active_indices, dtype=torch.long))
         
         # --- E. Aplicar Movimiento ---
         for i, idx in enumerate(active_indices):
@@ -124,11 +120,6 @@ def sample_pomo_rollouts(
             
             lay.move(src, dst)
             steps_taken[idx] += 1
-            
-            state_tensors = [b[i].clone() for b in batch_inputs]
-            states_history.append(state_tensors)
-            actions_history.append(action_idx)
-            rollout_idx_history.append(idx)
             
             if lay.is_sorted() or steps_taken[idx] >= max_steps_array[idx]:
                 active_mask[idx] = False
@@ -144,7 +135,9 @@ def sample_pomo_rollouts(
             returns[idx] = -max_steps_array[idx]
             is_solved[idx] = False
             
-    actions_history = torch.tensor(actions_history, dtype=torch.long, device=device)
+    states_history = [torch.cat(tensors, dim=0) for tensors in zip(*flat_inputs_steps)]
+    actions_history = torch.cat(flat_actions)
+    rollout_idx_history = torch.cat(flat_row)
     
     current_norm_ent = float(np.mean(norm_entropy_history)) if norm_entropy_history else 1.0
     
@@ -153,7 +146,7 @@ def sample_pomo_rollouts(
 def compute_pomo_advantages(
     returns: torch.Tensor, 
     combo_ids: List[Tuple[int, int]], 
-    rollout_idx_history: List[int],
+    rollout_idx_history: torch.Tensor,
     k_rollouts: int, 
     clip_val: float,
     device: torch.device
@@ -186,7 +179,6 @@ def compute_pomo_advantages(
         combo_adv = advantages[indices_tensor]
         std = combo_adv.std()
         
-        # Misma lógica que tu compute_advantages original
         if torch.isnan(std) or std < eps:
             advantages_norm[indices_tensor] = 0.0
         else:
@@ -196,7 +188,7 @@ def compute_pomo_advantages(
     advantages_norm = torch.clamp(advantages_norm, min=-clip_val, max=clip_val)
             
     # 4. Propagación temporal
-    advantages_history = advantages_norm[rollout_idx_history]
+    advantages_history = advantages_norm[rollout_idx_history.to(device)]
     
     return advantages_history
 
@@ -239,7 +231,7 @@ def update_model_pomo(
     model: torch.nn.Module, 
     ref_model: torch.nn.Module, 
     optimizer: torch.optim.Optimizer, 
-    states_history: list, 
+    states_history: List[torch.Tensor], 
     actions_history: torch.Tensor, 
     advantages_history: torch.Tensor, 
     minibatch_size: int, 
@@ -254,31 +246,26 @@ def update_model_pomo(
     model.eval()
     ref_model.eval()
 
-    total_steps = len(actions_history)
-    num_inputs = len(states_history[0])
-    stacked_states = []
+    total_steps = actions_history.shape[0]
+    num_inputs = len(states_history)
     
-    for j in range(num_inputs):
-        j_tensors = [states_history[i][j] for i in range(total_steps)]
-        stacked_states.append(torch.stack(j_tensors))
-        
     total_pg_loss = 0.0
     total_entropy = 0.0
     total_kl = 0.0
     
     optimizer.zero_grad(set_to_none=True)
-    indices = torch.randperm(total_steps, device=device)
+    indices = torch.randperm(total_steps)
     
     for start_idx in range(0, total_steps, minibatch_size):
         end_idx = min(start_idx + minibatch_size, total_steps)
         mb_indices = indices[start_idx:end_idx]
+        mb_indices_dev = mb_indices.to(device)
         mb_size = end_idx - start_idx
         
-        mb_states = [stacked_states[j][mb_indices] for j in range(num_inputs)]
-        mb_actions = actions_history[mb_indices]
-        mb_advantages = advantages_history[mb_indices]
+        mb_states = [states_history[j][mb_indices].to(device) for j in range(num_inputs)]
+        mb_actions = actions_history[mb_indices].to(device)
+        mb_advantages = advantages_history[mb_indices_dev]
         
-        # Inferencia directa con encode/decode
         stack_embeddings, _ = model.encode(*mb_states)
         logits = model.decode(stack_embeddings, *mb_states)
         
@@ -320,9 +307,6 @@ def evaluate_dev_greedy(
     la_class, *la_args = input_adapter_config
     input_adapter = la_class(*la_args)
     
-    # Aprovechamos el ModelSolver (que maneja anticiclos internamente por defecto)
-    solver = ModelSolver(model, input_adapter, batch_size=256)
-
     total_envs = len(dev_instances)
     penalized_steps = []
     solved_count = 0
@@ -338,6 +322,7 @@ def evaluate_dev_greedy(
         lays_copy = [copy.deepcopy(lay) for lay in lays]
         max_steps = max_steps_dict.get((S, H), 150)
         
+        solver = ModelSolver(model, input_adapter, batch_size=256)
         results = solver.solve_from_layouts(lays_copy, H, max_steps)
         
         for solved, steps in results:
@@ -367,13 +352,9 @@ def train_pomo_rl(
     
     os.makedirs(save_dir, exist_ok=True)
     best_dev_score = float('inf')
-    best_model_state = copy.deepcopy(model.state_dict())
     
     evals_without_improvement = 0
-    rollbacks_without_improvement = 0
     history = []
-    
-    temperature = 1.0
     
     for update in range(1, pomo_config.updates + 1):
         start_time = time.time()
@@ -388,7 +369,6 @@ def train_pomo_rl(
             pomo_config.k_rollouts, 
             max_steps_dict,  
             input_adapter_config,
-            temperature,
             device
         )
         
@@ -406,14 +386,6 @@ def train_pomo_rl(
             pomo_config.grad_clip, device
         )
         
-        # Ajuste matemático de temperatura post-evaluación
-        safe_norm_ent = max(1e-8, current_norm_ent)
-        ideal_temp = pomo_config.target_normalized_entropy / safe_norm_ent
-        
-        # Suavizado exponencial (EMA) para evitar el efecto yo-yo
-        tau = 0.1  # Velocidad de ajuste (10% de cambio por update)
-        temperature = max(1.0, temperature * (1 - tau) + ideal_temp * tau)
-        
         # Telemetría 
         solved_rate = is_solved.float().mean().item() * 100
         avg_steps = -returns[is_solved].mean().item() if solved_rate > 0 else 0.0
@@ -423,15 +395,15 @@ def train_pomo_rl(
         print(f"Update {update:05d} | "
               f"PG: {pg_loss:+.3f} | Ent: {entropy:.3f} | KL: {kl_div:.3f} | "
               f"Solve: {solved_rate:3.0f}% | AvgSteps: {avg_steps:.1f} | "
-              f"NormEnt: {current_norm_ent:.2f} | Temp: {temperature:.2f} | {fps:.0f} steps/s")
+              f"NormEnt: {current_norm_ent:.2f} | {fps:.0f} steps/s")
               
         history.append({
             "update": update, "pg_loss": pg_loss, "entropy": entropy, 
             "kl_div": kl_div, "solve_rate": solved_rate,
-            "norm_ent": current_norm_ent, "temperature": temperature
+            "norm_ent": current_norm_ent
         })
         
-        # Evaluación en Dev-Set y Rollbacks
+        # Evaluación en Dev-Set
         if update % pomo_config.eval_interval == 0:
             dev_score, solved_count, total_dev = evaluate_dev_greedy(
                 model, dev_instances, max_steps_dict, 
@@ -443,11 +415,8 @@ def train_pomo_rl(
             
             if dev_score < best_dev_score:
                 best_dev_score = dev_score
-                best_model_state = copy.deepcopy(model.state_dict())
                 
-                # Reseteamos ambos contadores al encontrar mejora
                 evals_without_improvement = 0
-                rollbacks_without_improvement = 0
                 
                 save_model(model, model_name)
                 print(f"   >>> 🏆 ¡Nuevo mejor modelo guardado!")
@@ -458,18 +427,8 @@ def train_pomo_rl(
                 print(f"   >>> ⚠️ Sin mejora ({evals_without_improvement}/{pomo_config.patience}).")
                 
                 if evals_without_improvement > pomo_config.patience:
-                    model.load_state_dict(best_model_state)
-                    optimizer.state.clear()
-                    
-                    evals_without_improvement = 0
-                    temperature = 1.0
-                    rollbacks_without_improvement += 1
-                    
-                    if rollbacks_without_improvement > pomo_config.rollback_patience:
-                        print(f"   >>> 🛑 Entrenamiento detenido: se alcanzó el límite de rollbacks sin mejora ({pomo_config.rollback_patience}).")
-                        break
-                        
-                    print(f"   >>> 🔄 Rollback ejecutado ({rollbacks_without_improvement}/{pomo_config.rollback_patience}). Pesos y estado del optimizador reseteados. Continuando entrenamiento...")
+                    print(f"   >>> 🛑 Entrenamiento detenido: se alcanzó el límite de evaluaciones sin mejora ({pomo_config.patience}).")
+                    break
             
     # Guardar historial al finalizar
     with open(os.path.join(save_dir, "history.json"), "w") as f:

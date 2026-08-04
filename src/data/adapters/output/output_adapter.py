@@ -1,4 +1,4 @@
-from generation.adapters.data_adapter import DataAdapter
+from data.adapters.data_adapter import DataAdapter
 from abc import abstractmethod
 
 class OutputAdapter(DataAdapter):

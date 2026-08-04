@@ -1,4 +1,4 @@
-from generation.adapters.output.output_adapter import OutputAdapter
+from data.adapters.output.output_adapter import OutputAdapter
 import numpy as np
 
 class ActionAdapter(OutputAdapter):

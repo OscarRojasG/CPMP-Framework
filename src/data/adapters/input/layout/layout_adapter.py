@@ -1,5 +1,5 @@
 import numpy as np
-from generation.adapters.input.input_adapter import InputAdapter
+from data.adapters.input.input_adapter import InputAdapter
 
 class LayoutAdapter(InputAdapter):
     def __init__(self, S_max, H_max):
