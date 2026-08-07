@@ -223,6 +223,7 @@ __marimo__/
 /data/*
 /models/*
 /models/hyperparameters/*
+/experiments/*
 
 !/instances/benchmarks
 !/data/.gitkeep

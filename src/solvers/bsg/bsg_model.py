@@ -54,7 +54,6 @@ class BSGModelSolver(Solver):
         return False, float('inf'), t
     
     def expand(self, states, visited_states, H, memory):
-        S = len(states[0].stacks)
         children = []
 
         # Preparación del batch de datos
