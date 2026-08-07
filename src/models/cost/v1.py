@@ -20,8 +20,7 @@ class CostPredictorTransformer(Transformer):
         self.C_dim = C_dim
         
         self.input_projection = nn.Linear(C_dim, d_model)
-        
-        # Token CLS: Representará el resumen de la pila
+
         self.cls_token = nn.Parameter(torch.randn(1, 1, d_model))
         
         self.intra_stack_attention = nn.TransformerEncoder(
@@ -40,7 +39,16 @@ class CostPredictorTransformer(Transformer):
             enable_nested_tensor=False
         )
         
+        self.inter_stack_attention = nn.TransformerEncoder(
+            nn.TransformerEncoderLayer(d_model, nhead, d_model * ff_dim_multiplier, dropout, batch_first=True),
+            num_layers=num_layers,
+            enable_nested_tensor=False
+        )
+
         self.cost_attention = nn.Linear(d_model, 1)
+        
+        self.attention_sink = nn.Parameter(torch.randn(1, 1, d_model))
+        
         self.cost_head = nn.Sequential(
             nn.Linear(d_model, d_model * ff_dim_multiplier),
             nn.GELU(),
@@ -53,48 +61,76 @@ class CostPredictorTransformer(Transformer):
         """
         S: (batch_size, S_len, H, C_dim)
         X: (batch_size, S_len, X_dim)
-        memory: dict (opcional) {tuple_state: embedding_tensor}
+        memory: dict (opcional) {tuple_stack: embedding_tensor_1D}
         """
         batch_size, S_len, H_max, C_dim = L.shape
         device = L.device
 
         # s_mask es [B, S_len], True para stacks válidos, False para padding.
         s_mask = torch.arange(S_len, device=device).expand(batch_size, S_len) < S.unsqueeze(1)
-
-        # 1. Preparar Máscara de Padding (True donde hay -1)
-        # L == -1 en todas sus features N
-        padding_mask = (L == -1).all(dim=-1) # [B, S, H]
         
-        # 2. Proyección y Reshape
-        x = self.input_projection(L.float()) # [B, S, H, d_model]
-        x = x.view(batch_size * S_len, H_max, self.d_model) # [B*S, H, d_model]
-        
-        # 3. Añadir CLS Token al inicio de cada secuencia (pila)
-        cls_tokens = self.cls_token.expand(batch_size * S_len, 1, -1) # [B*S, 1, d_model]
-        x = torch.cat((cls_tokens, x), dim=1) # [B*S, H+1, d_model]
+        if memory is None:
+            memory = {}
 
-        # 4. Máscara de atención para el CLS y contenedores reales
-        # El CLS nunca es padding (False). Los contenedores son padding si eran -1.
-        cls_mask = torch.zeros((batch_size * S_len, 1), dtype=torch.bool, device=device)
-        full_padding_mask = padding_mask.view(batch_size * S_len, H_max)
-        full_padding_mask = torch.cat((cls_mask, full_padding_mask), dim=1) # [B*S, H+1]
-
-        # 5. Intra-stack Attention
-        # src_key_padding_mask hace que los -1 no influyan en el softmax
-        x_out = self.intra_stack_attention(x, src_key_padding_mask=full_padding_mask)
-
-        # 6. Pooling: Tomamos solo el output de la posición del CLS (índice 0)
-        stack_vertical_info = x_out[:, 0, :].view(batch_size, S_len, self.d_model)
+        # 1. Aplanar L y X para aislar CADA PILA individualmente
+        L_flat_tensor = L.view(batch_size * S_len, H_max, C_dim)
+        X_flat_tensor = X.view(batch_size * S_len, self.X_dim)
         
-        # 7. Fusion con X
-        x_external_info = self.x_projection(X)
-        combined = torch.cat([stack_vertical_info, x_external_info], dim=-1)
-        processed = self.fusion_norm(self.fusion_layer(combined))
+        # OPTIMIZACIÓN CRÍTICA: Un solo traslado a CPU para todo el batch
+        L_flat_list = L_flat_tensor.detach().cpu().view(batch_size * S_len, -1).tolist()
+        X_flat_list = X_flat_tensor.detach().cpu().tolist()
         
-        # Aplicamos la máscara S a los embeddings recién calculados
-        # Los stacks fuera de S se ponen en 0 (o un valor neutral)
+        # Generar llaves por pila (combinamos L y X para asegurar unicidad)
+        stack_keys = [tuple(l + x) for l, x in zip(L_flat_list, X_flat_list)]
+        
+        # Filtrar solo las pilas que NUNCA hemos procesado
+        missing_indices = [i for i, key in enumerate(stack_keys) if key not in memory]
+        
+        # 2. Si hay pilas nuevas, las procesamos TODAS JUNTAS en un sub-batch
+        if len(missing_indices) > 0:
+            L_missing = L_flat_tensor[missing_indices] # [N_missing, H, C]
+            X_missing = X_flat_tensor[missing_indices] # [N_missing, X_dim]
+            N = L_missing.shape[0]
+
+            # Preparar Máscara de Padding (True donde hay -1)
+            padding_mask = (L_missing == -1).all(dim=-1) # [N, H]
+            
+            # Proyección (ya no necesitamos hacer reshapes complejos, todo es de tamaño N)
+            x = self.input_projection(L_missing.float()) # [N, H, d_model]
+            
+            # Añadir CLS Token
+            cls_tokens = self.cls_token.expand(N, 1, -1) # [N, 1, d_model]
+            x = torch.cat((cls_tokens, x), dim=1) # [N, H+1, d_model]
+
+            # Máscara de atención para el CLS y contenedores reales
+            cls_mask = torch.zeros((N, 1), dtype=torch.bool, device=device)
+            full_padding_mask = torch.cat((cls_mask, padding_mask), dim=1) # [N, H+1]
+
+            # Intra-stack Attention (procesa solo las N pilas faltantes)
+            x_out = self.intra_stack_attention(x, src_key_padding_mask=full_padding_mask)
+
+            # Pooling: Tomamos el CLS
+            stack_vertical_info = x_out[:, 0, :] # [N, d_model]
+            
+            # Fusion con X
+            x_external_info = self.x_projection(X_missing) # [N, d_model]
+            combined = torch.cat([stack_vertical_info, x_external_info], dim=-1)
+            final_embeddings = self.fusion_norm(self.fusion_layer(combined)) # [N, d_model]
+            
+            # Guardar en memoria (guardamos tensores 1D sueltos en GPU)
+            for i, original_idx in enumerate(missing_indices):
+                memory[stack_keys[original_idx]] = final_embeddings[i].detach()
+
+        # 3. Reconstruir el tensor batch recuperando todo desde la memoria
+        # torch.stack une todos los vectores 1D de la memoria en un bloque velozmente
+        flat_embeddings = torch.stack([memory[key] for key in stack_keys])
+        
+        # Volvemos a darle la forma de tu Batch original
+        stack_embeddings = flat_embeddings.view(batch_size, S_len, self.d_model)
+        
+        # Aplicamos la máscara de padding a nivel de Layout para las pilas inexistentes
         current_s_mask = s_mask.unsqueeze(-1)
-        stack_embeddings = (processed * current_s_mask).to(torch.float32)
+        stack_embeddings = (stack_embeddings * current_s_mask).to(torch.float32)
 
         return stack_embeddings, memory
     
@@ -102,19 +138,30 @@ class CostPredictorTransformer(Transformer):
         batch_size, S_len, H_max, C_dim = L.shape
         device = L.device
     
-        # Zeroing de stacks de padding antes del encoder
+        # Máscara para el transformer y el pooling (True = es padding)
         inter_padding_mask = ~(torch.arange(S_len, device=device).expand(batch_size, S_len) < S.unsqueeze(1))
-        stack_embeddings = stack_embeddings * (~inter_padding_mask).unsqueeze(-1).float()
     
-        # Inter-stack attention sin máscara
-        z = self.inter_stack_attention(stack_embeddings)
-    
-        # Attention pooling con enmascaramiento final
-        attn_logits = self.cost_attention(z)
-        attn_logits = attn_logits.masked_fill(
-            inter_padding_mask.unsqueeze(-1), -1e4
-        )
+        # Pasa la máscara al TransformerEncoder para que los stacks válidos no atiendan a los ceros del padding
+        z = self.inter_stack_attention(stack_embeddings, src_key_padding_mask=inter_padding_mask)
+        
+        # 1. Añadimos el vector sumidero a la secuencia procesada
+        sink = self.attention_sink.expand(batch_size, 1, -1)
+        z_with_sink = torch.cat([z, sink], dim=1) # [B, S_len + 1, d_model]
+        
+        # 2. Capa lineal para calcular logits (sobre todos + el sumidero)
+        attn_logits = self.cost_attention(z_with_sink)
+        
+        # 3. Ajustar la máscara: El sumidero NUNCA es padding (False)
+        sink_mask = torch.zeros((batch_size, 1), dtype=torch.bool, device=device)
+        full_mask = torch.cat([inter_padding_mask, sink_mask], dim=1) # [B, S_len + 1]
+        
+        # 4. Aplicar máscara.
+        attn_logits = attn_logits.masked_fill(full_mask.unsqueeze(-1), -1e9)
+        
+        # 5. Softmax: Ahora, si ningún stack es importante, la red le da el peso al sumidero
         attn_weights = torch.softmax(attn_logits, dim=1)
-        z_global = torch.sum(z * attn_weights, dim=1)
+        
+        # 6. Suma ponderada con los pesos
+        z_global = torch.sum(z_with_sink * attn_weights, dim=1)
     
         return self.cost_head(z_global).squeeze(-1)

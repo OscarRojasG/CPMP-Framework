@@ -12,15 +12,6 @@ class BSGCostPredictorSolver(Solver):
         self.input_adapter = input_adapter
         self.w = w
         self.batch_size = batch_size
-
-    def solve_from_layouts(self, layouts, H, max_steps):
-        results = []
-        for layout in layouts:
-            r = self.solve_from_layout(layout, H, max_steps)
-            r = [r[0], r[1]]
-            results.append(r)
-
-        return results
     
     def solve_from_layout(self, layout, H, max_steps):
         t0 = time.perf_counter()
@@ -29,17 +20,25 @@ class BSGCostPredictorSolver(Solver):
         states.append(layout)
         best_state = None
         visited_states = set()
+        
+        # 1. Inicializamos dos memorias independientes para cada modelo
+        action_memory = {}
+        cost_memory = {}
 
         while not best_state and states[0].steps < max_steps:
             children = []
             for i in range(0, len(states), self.batch_size):
                 batch_states = states[i:i+self.batch_size]
-                children += self.expand(batch_states, visited_states, H)
+                # Pasamos y actualizamos la memoria de acciones
+                batch_children, action_memory = self.expand(batch_states, visited_states, H, action_memory)
+                children += batch_children
 
             evals = []
             for i in range(0, len(children), self.batch_size):
                 batch_children = children[i:i+self.batch_size]
-                evals += self.eval(batch_children, H)
+                # Pasamos y actualizamos la memoria de costos
+                batch_evals, cost_memory = self.eval(batch_children, H, cost_memory)
+                evals += batch_evals
 
             evals = torch.tensor(evals)
             k = min(self.w, len(evals))
@@ -58,8 +57,7 @@ class BSGCostPredictorSolver(Solver):
             return True, best_state.steps, t
         return False, float('inf'), t
     
-    def expand(self, states, visited_states, H):
-        S = len(states[0].stacks)
+    def expand(self, states, visited_states, H, memory):
         children = []
 
         # Preparación del batch de datos
@@ -73,9 +71,10 @@ class BSGCostPredictorSolver(Solver):
 
         batch_inputs = [torch.cat(tensors, dim=0) for tensors in zip(*batch_data_lists)]
         
-        # Inferencia en batch
+        # 2. Inferencia en batch usando la memoria del action_model
         with torch.no_grad():
-            logits = self.action_model(*batch_inputs)
+            stack_embeddings, memory = self.action_model.encode(*batch_inputs, memory=memory)
+            logits = self.action_model.decode(stack_embeddings, *batch_inputs)
         
         # Ordenamos índices de mejor a peor para cada layout en el batch
         top_values_batch, top_indices_batch = torch.sort(logits, dim=1, descending=True)
@@ -107,11 +106,10 @@ class BSGCostPredictorSolver(Solver):
                     if children_count >= self.w:
                         break
 
-        return children
+        # Retornamos los hijos y la memoria actualizada
+        return children, memory
     
-    def eval(self, children, H):
-        S = len(children[0].stacks)
-
+    def eval(self, children, H, memory):
         # Preparación del batch de datos
         batch_data_lists = []
         for state in children:
@@ -123,8 +121,10 @@ class BSGCostPredictorSolver(Solver):
 
         batch_inputs = [torch.cat(tensors, dim=0) for tensors in zip(*batch_data_lists)]
 
-        # Inferencia en batch
+        # 3. Inferencia en batch usando la memoria del cost_model
         with torch.no_grad():
-            costs = self.cost_model(*batch_inputs)
+            stack_embeddings, memory = self.cost_model.encode(*batch_inputs, memory=memory)
+            costs = self.cost_model.decode(stack_embeddings, *batch_inputs)
 
-        return costs
+        # Retornamos los costos como lista plana y la memoria actualizada
+        return costs.tolist(), memory

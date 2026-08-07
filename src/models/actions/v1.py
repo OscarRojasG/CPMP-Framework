@@ -47,7 +47,7 @@ class CPMPTransformer(Transformer):
         """
         S: (batch_size, S_len, H, C_dim)
         X: (batch_size, S_len, X_dim)
-        memory: dict (opcional) {tuple_state: embedding_tensor}
+        memory: dict (opcional) {tuple_stack: embedding_tensor_1D}
         """
         batch_size, S_len, H_max, C_dim = L.shape
         device = L.device
@@ -58,64 +58,65 @@ class CPMPTransformer(Transformer):
         if memory is None:
             memory = {}
 
-        # 1. Identificación de estados para caché
-        state_keys = [tuple(s.detach().cpu().numpy().flatten()) for s in L]
-        missing_indices = [i for i, key in enumerate(state_keys) if key not in memory]
+        # 1. Aplanar L y X para aislar CADA PILA individualmente
+        L_flat_tensor = L.view(batch_size * S_len, H_max, C_dim)
+        X_flat_tensor = X.view(batch_size * S_len, self.X_dim)
         
-        # Tensor final que vamos a rellenar
-        stack_embeddings = torch.zeros((batch_size, S_len, self.d_model), device=device)
-
-        # 2. Si hay estados nuevos, procesarlos por el modelo
+        # OPTIMIZACIÓN CRÍTICA: Un solo traslado a CPU para todo el batch
+        L_flat_list = L_flat_tensor.detach().cpu().view(batch_size * S_len, -1).tolist()
+        X_flat_list = X_flat_tensor.detach().cpu().tolist()
+        
+        # Generar llaves por pila (combinamos L y X para asegurar unicidad)
+        stack_keys = [tuple(l + x) for l, x in zip(L_flat_list, X_flat_list)]
+        
+        # Filtrar solo las pilas que NUNCA hemos procesado
+        missing_indices = [i for i, key in enumerate(stack_keys) if key not in memory]
+        
+        # 2. Si hay pilas nuevas, las procesamos TODAS JUNTAS en un sub-batch
         if len(missing_indices) > 0:
-            S_to_process = L[missing_indices] # [B', S, H, C]
-            X_to_process = X[missing_indices]
-            curr_B = S_to_process.shape[0]
+            L_missing = L_flat_tensor[missing_indices] # [N_missing, H, C]
+            X_missing = X_flat_tensor[missing_indices] # [N_missing, X_dim]
+            N = L_missing.shape[0]
 
-            # 1. Preparar Máscara de Padding (True donde hay -1)
-            # S_to_process == -1 en todas sus features N
-            padding_mask = (S_to_process == -1).all(dim=-1) # [B', S, H]
+            # Preparar Máscara de Padding (True donde hay -1)
+            padding_mask = (L_missing == -1).all(dim=-1) # [N, H]
             
-            # 2. Proyección y Reshape
-            x = self.input_projection(S_to_process.float()) # [B', S, H, d_model]
-            x = x.view(curr_B * S_len, H_max, self.d_model) # [B'*S, H, d_model]
+            # Proyección (ya no necesitamos hacer reshapes complejos, todo es de tamaño N)
+            x = self.input_projection(L_missing.float()) # [N, H, d_model]
             
-            # 3. Añadir CLS Token al inicio de cada secuencia (pila)
-            cls_tokens = self.cls_token.expand(curr_B * S_len, 1, -1) # [B'*S, 1, d_model]
-            x = torch.cat((cls_tokens, x), dim=1) # [B'*S, H+1, d_model]
+            # Añadir CLS Token
+            cls_tokens = self.cls_token.expand(N, 1, -1) # [N, 1, d_model]
+            x = torch.cat((cls_tokens, x), dim=1) # [N, H+1, d_model]
 
-            # 5. Máscara de atención para el CLS y contenedores reales
-            # El CLS nunca es padding (False). Los contenedores son padding si eran -1.
-            cls_mask = torch.zeros((curr_B * S_len, 1), dtype=torch.bool, device=device)
-            full_padding_mask = padding_mask.view(curr_B * S_len, H_max)
-            full_padding_mask = torch.cat((cls_mask, full_padding_mask), dim=1) # [B'*S, H+1]
+            # Máscara de atención para el CLS y contenedores reales
+            cls_mask = torch.zeros((N, 1), dtype=torch.bool, device=device)
+            full_padding_mask = torch.cat((cls_mask, padding_mask), dim=1) # [N, H+1]
 
-            # 6. Intra-stack Attention
-            # src_key_padding_mask hace que los -1 no influyan en el softmax
+            # Intra-stack Attention (procesa solo las N pilas faltantes)
             x_out = self.intra_stack_attention(x, src_key_padding_mask=full_padding_mask)
 
-            # 7. Pooling: Tomamos solo el output de la posición del CLS (índice 0)
-            stack_vertical_info = x_out[:, 0, :].view(curr_B, S_len, self.d_model)
+            # Pooling: Tomamos el CLS
+            stack_vertical_info = x_out[:, 0, :] # [N, d_model]
             
-            # 8. Fusion con X
-            x_external_info = self.x_projection(X_to_process)
+            # Fusion con X
+            x_external_info = self.x_projection(X_missing) # [N, d_model]
             combined = torch.cat([stack_vertical_info, x_external_info], dim=-1)
-            processed = self.fusion_norm(self.fusion_layer(combined))
+            final_embeddings = self.fusion_norm(self.fusion_layer(combined)) # [N, d_model]
             
-            # Aplicamos la máscara S a los embeddings recién calculados
-            # Los stacks fuera de S se ponen en 0 (o un valor neutral)
-            current_s_mask = s_mask[missing_indices].unsqueeze(-1)
-            final_embeddings = (processed * current_s_mask).to(torch.float32)
-            
-            stack_embeddings[missing_indices] = final_embeddings
-            
-            # Guardar en memoria (siempre en float32)
+            # Guardar en memoria (guardamos tensores 1D sueltos en GPU)
             for i, original_idx in enumerate(missing_indices):
-                memory[state_keys[original_idx]] = final_embeddings[i].detach()
+                memory[stack_keys[original_idx]] = final_embeddings[i].detach()
 
-        # 4. Recuperar los que ya estaban en memoria
-        existing_indices = [i for i, key in enumerate(state_keys) if key in memory and i not in missing_indices]
-        for i in existing_indices:
-            stack_embeddings[i] = memory[state_keys[i]].to(device)
+        # 3. Reconstruir el tensor batch recuperando todo desde la memoria
+        # torch.stack une todos los vectores 1D de la memoria en un bloque velozmente
+        flat_embeddings = torch.stack([memory[key] for key in stack_keys])
+        
+        # Volvemos a darle la forma de tu Batch original
+        stack_embeddings = flat_embeddings.view(batch_size, S_len, self.d_model)
+        
+        # Aplicamos la máscara de padding a nivel de Layout para las pilas inexistentes
+        current_s_mask = s_mask.unsqueeze(-1)
+        stack_embeddings = (stack_embeddings * current_s_mask).to(torch.float32)
 
         return stack_embeddings, memory
 
