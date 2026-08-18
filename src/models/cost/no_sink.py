@@ -41,7 +41,7 @@ class CostPredictorTransformer(Transformer):
 
         self.cost_attention = nn.Linear(d_model, 1)
         
-        self.attention_sink = nn.Parameter(torch.randn(1, 1, d_model))
+        # ELIMINADO: self.attention_sink = nn.Parameter(torch.randn(1, 1, d_model))
         
         self.cost_head = nn.Sequential(
             nn.Linear(d_model, d_model * ff_dim_multiplier),
@@ -116,7 +116,6 @@ class CostPredictorTransformer(Transformer):
                 memory[stack_keys[original_idx]] = final_embeddings[i].detach()
 
         # 3. Reconstruir el tensor batch recuperando todo desde la memoria
-        # torch.stack une todos los vectores 1D de la memoria en un bloque velozmente
         flat_embeddings = torch.stack([memory[key] for key in stack_keys])
         
         # Volvemos a darle la forma de tu Batch original
@@ -135,27 +134,19 @@ class CostPredictorTransformer(Transformer):
         # Máscara para el transformer y el pooling (True = es padding)
         inter_padding_mask = ~(torch.arange(S_len, device=device).expand(batch_size, S_len) < S.unsqueeze(1))
     
-        # Pasa la máscara al TransformerEncoder para que los stacks válidos no atiendan a los ceros del padding
+        # Transformer inter-stack
         z = self.inter_stack_attention(stack_embeddings, src_key_padding_mask=inter_padding_mask)
         
-        # 1. Añadimos el vector sumidero a la secuencia procesada
-        sink = self.attention_sink.expand(batch_size, 1, -1)
-        z_with_sink = torch.cat([z, sink], dim=1) # [B, S_len + 1, d_model]
+        # 1. Capa lineal para calcular logits (ahora solo sobre las pilas 'z')
+        attn_logits = self.cost_attention(z)
         
-        # 2. Capa lineal para calcular logits (sobre todos + el sumidero)
-        attn_logits = self.cost_attention(z_with_sink)
+        # 2. Aplicar máscara directamente (sin concatenar una falsa para el sumidero)
+        attn_logits = attn_logits.masked_fill(inter_padding_mask.unsqueeze(-1), -1e9)
         
-        # 3. Ajustar la máscara: El sumidero NUNCA es padding (False)
-        sink_mask = torch.zeros((batch_size, 1), dtype=torch.bool, device=device)
-        full_mask = torch.cat([inter_padding_mask, sink_mask], dim=1) # [B, S_len + 1]
-        
-        # 4. Aplicar máscara.
-        attn_logits = attn_logits.masked_fill(full_mask.unsqueeze(-1), -1e9)
-        
-        # 5. Softmax: Ahora, si ningún stack es importante, la red le da el peso al sumidero
+        # 3. Softmax: Ahora el 100% de la probabilidad SE REPARTE SÍ O SÍ entre las pilas válidas
         attn_weights = torch.softmax(attn_logits, dim=1)
         
-        # 6. Suma ponderada con los pesos
-        z_global = torch.sum(z_with_sink * attn_weights, dim=1)
+        # 4. Suma ponderada con los pesos
+        z_global = torch.sum(z * attn_weights, dim=1)
     
         return self.cost_head(z_global).squeeze(-1)
