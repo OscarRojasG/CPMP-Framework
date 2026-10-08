@@ -230,3 +230,12 @@ __marimo__/
 !/models/.gitkeep
 !/models/hyperparameters
 !/models/hyperparameters/.gitkeep
+
+!/models/actions_sl.pth
+!/models/actions_rl.pth
+!/models/cost.pth
+!/models/ablation_sf.pth
+!/models/hyperparameters/actions_sl.json
+!/models/hyperparameters/actions_rl.json
+!/models/hyperparameters/cost.json
+!/models/hyperparameters/ablation_sf.json
