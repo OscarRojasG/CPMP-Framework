@@ -60,33 +60,31 @@ class DLTSSolver(Solver):
 
         self._stats_history: list = []
 
-    def solve_from_layouts(self, layouts, H, max_steps):
-        results = []
-        for layout in layouts:
-            solved, steps, _t = self.solve_from_layout(layout, H, max_steps)
-            results.append([solved, steps])
-        return results
+    # D6: instancia ya ordenada en la raíz -> 0 movimientos. search_dfs/
+    # search_lds sólo declaran "resuelto" cuando el incumbent es no vacío
+    # (len(incumbent) > 0), así que un layout que YA está ordenado terminaría
+    # con incumbent=[] y se reportaría como NO resuelta. Es un caso real del
+    # benchmark (benchmarks/3-3/data3-3-39.dat). La base Solver lo intercepta
+    # antes de llegar a _solve_from_layout (sin tocar tree_search.py, para no
+    # alterar el algoritmo portado ni la equivalencia exacta que verifica V4);
+    # aquí sólo se registra la entrada de stats, para que last_stats siga
+    # teniendo exactamente una entrada por instancia. Devuelve 0 y no
+    # layout.steps porque DLTS reporta pasos relativos (len(incumbent)).
+    def _solve_sorted(self, layout):
+        t0 = time.perf_counter()
+        stats = SearchStats()
+        stats.stop_reason = "already_sorted"
+        stats.time_s = time.perf_counter() - t0
+        self._stats_history.append(stats)
+        return True, 0, stats.time_s
 
-    def solve_from_layout(self, layout, H, max_steps):
+    def _solve_from_layout(self, layout, H, max_steps):
         t0 = time.perf_counter()
 
         layout_initial = clone_layout(layout)   # se preserva para validar (V7)
         search_layout = clone_layout(layout)    # la que mutará la búsqueda
 
         stats = SearchStats()
-
-        # D6: instancia ya ordenada en la raíz -> 0 movimientos. search_dfs/
-        # search_lds sólo declaran "resuelto" cuando el incumbent es no vacío
-        # (len(incumbent) > 0), así que un layout que YA está ordenado termina
-        # con incumbent=[] y se reporta como NO resuelta. Es un caso real del
-        # benchmark (benchmarks/3-3/data3-3-39.dat). Se resuelve en el wrapper
-        # y no en tree_search.py para no alterar el algoritmo portado ni la
-        # equivalencia exacta con el original que verifica V4.
-        if search_layout.is_sorted():
-            stats.stop_reason = "already_sorted"
-            stats.time_s = time.perf_counter() - t0
-            self._stats_history.append(stats)
-            return True, 0, stats.time_s
 
         nets = NetProvider(
             self.action_model,

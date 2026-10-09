@@ -10,16 +10,12 @@ class BSGFRGSolver(Solver):
         super().__init__("BSGFRGSolver")
         self.w = w
 
-    def solve_from_layouts(self, layouts, H, max_steps):
-        results = []
-        for layout in layouts:
-            r = self.solve_from_layout(layout, H, max_steps)
-            r = [r[0], r[1]]
-            results.append(r)
+    # El binario reporta pasos relativos al layout recibido (no conoce
+    # layout.steps), así que una instancia ordenada vale 0 y no los acumulados
+    def _solve_sorted(self, layout):
+        return True, 0, 0.0
 
-        return results
-    
-    def solve_from_layout(self, layout, H, max_steps):
+    def _solve_from_layout(self, layout, H, max_steps):
         pid = os.getpid()
         filepath = INSTANCE_FOLDER / f"tmp_{pid}.txt"
 

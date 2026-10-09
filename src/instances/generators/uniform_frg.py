@@ -14,7 +14,7 @@ class UniformFRGGenerator(InstanceGenerator):
             stacks = self.generate_stacks(self.H, self.S, self.N, sorted=False)
             lay = Layout(stacks, self.H)
 
-            steps = self.solver.solve_from_layout(lay, self.H, 100000, return_steps=True)
+            steps = self.solver.get_moves(lay, self.H, 100000)
 
             for step in reversed(steps):
                 lay.move(*step)

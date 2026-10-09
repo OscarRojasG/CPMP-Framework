@@ -15,7 +15,7 @@ class ModelSolver(Solver):
         # Diccionario de embeddings
         self.memory = None
 
-    def solve_from_layouts(self, layouts, H, max_steps):
+    def _solve_from_layouts(self, layouts, H, max_steps):
         results = []
         for i in range(0, len(layouts), self.batch_size):
             batch_layouts = layouts[i:i+self.batch_size]
@@ -23,10 +23,10 @@ class ModelSolver(Solver):
             results += r
 
         return results
-    
-    def solve_from_layout(self, layout, H, max_steps):
+
+    def _solve_from_layout(self, layout, H, max_steps):
         t0 = time.perf_counter()
-        result = self.solve_from_layouts([layout], H, max_steps)[0]
+        result = self._solve_from_layouts([layout], H, max_steps)[0]
         t1 = time.perf_counter()
         t = t1 - t0
 

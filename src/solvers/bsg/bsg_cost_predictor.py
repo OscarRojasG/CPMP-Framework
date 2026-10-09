@@ -13,14 +13,14 @@ class BSGCostPredictorSolver(Solver):
         self.w = w
         self.batch_size = batch_size
     
-    def solve_from_layout(self, layout, H, max_steps):
+    def _solve_from_layout(self, layout, H, max_steps):
         t0 = time.perf_counter()
 
         states = []
         states.append(layout)
         best_state = None
-        visited_states = set()
-        
+        visited_states = {tuple(tuple(stack) for stack in layout.stacks)}
+
         # 1. Inicializamos dos memorias independientes para cada modelo
         action_memory = {}
         cost_memory = {}

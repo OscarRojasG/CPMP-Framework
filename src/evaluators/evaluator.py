@@ -40,10 +40,10 @@ def run_eval(solver, folder, H, max_steps):
         writer.writerow(['Instance', 'Solved', 'Steps', 'Time'])
 
         for i, instance in enumerate(instances, start=1):
-            # Resolver la instancia
+            # Resolver la instancia (reset antes, para no heredar memoria de usos previos del solver)
             instance_path = os.path.join(folder, instance)
-            solved, steps, t = solver.solve(instance_path, H, max_steps)
             solver.reset()
+            solved, steps, t = solver.solve(instance_path, H, max_steps)
 
             # Guardar en CSV incrementalmente
             writer.writerow([instance, solved, steps, t])

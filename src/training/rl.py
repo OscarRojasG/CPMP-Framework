@@ -355,6 +355,14 @@ def train_pomo_rl(
     
     evals_without_improvement = 0
     history = []
+
+    # Evaluación preliminar antes de entrenar
+    dev_score, solved_count, total_dev = evaluate_dev_greedy(
+        model, dev_instances, max_steps_dict, 
+        input_adapter_config, device
+    )
+    solve_rate_dev = (solved_count / total_dev) * 100
+    print(f"   >>> 🧪 Evaluación Inicial: {dev_score:.2f} pasos | Resueltas: {solved_count}/{total_dev} ({solve_rate_dev:.1f}%)")
     
     for update in range(1, pomo_config.updates + 1):
         start_time = time.time()

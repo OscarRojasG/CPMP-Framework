@@ -13,14 +13,14 @@ class BSGModelSolver(Solver):
         self.w = w
         self.batch_size = batch_size
     
-    def solve_from_layout(self, layout, H, max_steps):
+    def _solve_from_layout(self, layout, H, max_steps):
         t0 = time.perf_counter()
 
         states = []
         states.append(layout)
         best_state = None
         model_solver = ModelSolver(self.model, self.input_adapter, self.batch_size)
-        visited_states = set()
+        visited_states = {tuple(tuple(stack) for stack in layout.stacks)}
         memory = None
 
         while not best_state and states[0].steps < max_steps:

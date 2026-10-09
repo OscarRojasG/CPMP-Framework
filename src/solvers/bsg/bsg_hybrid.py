@@ -13,23 +13,14 @@ class BSGHybridSolver(Solver):
         self.w = w
         self.batch_size = batch_size
 
-    def solve_from_layouts(self, layouts, H, max_steps):
-        results = []
-        for layout in layouts:
-            r = self.solve_from_layout(layout, H, max_steps)
-            r = [r[0], r[1]]
-            results.append(r)
-
-        return results
-    
-    def solve_from_layout(self, layout, H, max_steps):
+    def _solve_from_layout(self, layout, H, max_steps):
         t0 = time.perf_counter()
 
         states = []
         states.append(layout)
         best_state = None
         solver = FRGSolver()
-        visited_states = set()
+        visited_states = {tuple(tuple(stack) for stack in layout.stacks)}
         memory = None
 
         while not best_state and states[0].steps < max_steps:
