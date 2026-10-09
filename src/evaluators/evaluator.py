@@ -3,23 +3,13 @@ import csv
 import torch
 from settings import INSTANCE_FOLDER, EXPERIMENTS_FOLDER
 
-def run_eval(solver, folder, H, max_steps):
+def run_eval(solver, folder, H, max_steps, csv_filename):
     # 1. Configuración de hilos para pureza en el benchmarking
     os.environ["OMP_NUM_THREADS"] = "1"
     os.environ["MKL_NUM_THREADS"] = "1"
     torch.set_num_threads(1)
 
-    # 2. Nombre y ruta del archivo de salida
-    folder_name = os.path.basename(os.path.normpath(folder))
-    # Verificamos si el solver tiene el atributo 'w'
-    if hasattr(solver, 'w'):
-        csv_filename = f"{solver.name}_w{solver.w}_{folder_name}.csv"
-        w_info = f" | Parámetro w: {solver.w}"
-    else:
-        csv_filename = f"{solver.name}_{folder_name}.csv"
-        w_info = ""
-    
-    # Combinamos la carpeta de experimentos con el nombre del archivo
+    # 2. Ruta del archivo de salida (el nombre lo define quien llama)
     csv_filepath = EXPERIMENTS_FOLDER / csv_filename
     
     # Asegurarnos de que el directorio de experimentos exista
@@ -31,7 +21,7 @@ def run_eval(solver, folder, H, max_steps):
     total = len(instances)
 
     print(f"--- Iniciando benchmarking ---")
-    print(f"Solver: {solver.name}{w_info}")
+    print(f"Solver: {solver.name}")
     print(f"Guardando resultados en: {csv_filepath}\n")
 
     # 4. Abrir archivo en modo escritura y procesar

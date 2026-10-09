@@ -1,58 +1,77 @@
-from models.actions.default import CPMPTransformer
-from models.cost.default import CostPredictorTransformer
+# ==================== Parámetros ====================
+# True: modelos con memoria (default.py) | False: modelos sin memoria (no_memory.py)
+USE_MEMORY = True
+
+# Conjunto de benchmarks a evaluar: "cvs", "g2" o "g3"
+DATASET = "cvs"
+
+# Modelos a cargar (nombres en la carpeta models/)
+ACTION_MODEL_NAME = "actions_rl"
+COST_MODEL_NAME = "cost"
+
+# Anchos de Beam Search (w)
+W_VALUES = [2, 4, 8, 16, 32]
+
+# Configuraciones (H-2, S)
+CONFIGS = [
+    (3, 3), (3, 4), (3, 5), (3, 6), (3, 7), (3, 8),
+    (4, 4), (4, 5), (4, 6), (4, 7),
+    (5, 4), (5, 5), (5, 6), (5, 7), (5, 8), (5, 9), (5, 10),
+    (6, 6), (6, 10)
+]
+
+MAX_STEPS = 100
+# ====================================================
+
+if USE_MEMORY:
+    from models.actions.default import CPMPTransformer
+    from models.cost.default import CostPredictorTransformer
+else:
+    from models.actions.no_memory import CPMPTransformer
+    from models.cost.no_memory import CostPredictorTransformer
 from training.common import load_model
 from data.adapters.input import EnrichedLayoutAdapter, Layout4DAdapterV1, StackFeaturesAdapterV1
 from solvers import BSGCostPredictorSolver
 from evaluators.evaluator import run_eval
 
 def run_all_benchmarks():
-    # 1. Cargamos el modelo una sola vez (reutilizamos los pesos para todas las configs)
-    action_model_name = "rl"
-    action_model = load_model(CPMPTransformer, action_model_name)
-
-    cost_model_name = "cost"
-    cost_model = load_model(CostPredictorTransformer, cost_model_name)
-    
-    # 2. Definimos las configuraciones y los anchos de Beam Search (w)
-    w_values = [2, 4, 8, 16, 32]
-    configs = [
-        (3, 3), (3, 4), (3, 5), (3, 6), (3, 7), (3, 8),
-        (4, 4), (4, 5), (4, 6), (4, 7),
-        (5, 4), (5, 5), (5, 6), (5, 7), (5, 8), (5, 9), (5, 10),
-        (6, 6), (6, 10)
-    ]
-    
-    max_steps = 100
+    # 1. Cargamos los modelos una sola vez (reutilizamos los pesos para todas las configs)
+    action_model = load_model(CPMPTransformer, ACTION_MODEL_NAME)
+    cost_model = load_model(CostPredictorTransformer, COST_MODEL_NAME)
 
     print("=== INICIANDO BATERÍA DE BENCHMARKS ===")
-    
-    # 3. Iteramos por cada configuración de entorno
-    for H_minus_2, S in configs:
+
+    # 2. Iteramos por cada configuración de entorno
+    for H_minus_2, S in CONFIGS:
         # Recuperamos el valor real de H eliminando el offset
         H = H_minus_2 + 2
-        folder = f"benchmarks/{H_minus_2}-{S}"
-        
+        folder = f"benchmarks/{DATASET}/{H_minus_2}-{S}"
+
         print(f"\n{'='*50}")
         print(f"Configuración Actual -> S: {S} | H: {H} (Carpeta: {folder})")
         print(f"{'='*50}")
-        
-        # 4. Recreamos el input_adapter para las dimensiones de esta configuración
+
+        # 3. Recreamos el input_adapter para las dimensiones de esta configuración
         input_adapter = EnrichedLayoutAdapter(
-            Layout4DAdapterV1, 
-            StackFeaturesAdapterV1, 
-            S, 
+            Layout4DAdapterV1,
+            StackFeaturesAdapterV1,
+            S,
             H
         )
-        
-        # 5. Ejecutamos la evaluación para cada valor de w
-        for w in w_values:
+
+        # 4. Ejecutamos la evaluación para cada valor de w
+        for w in W_VALUES:
             print(f"\n--- Evaluando con w={w} ---")
-            
+
             # Instanciamos el solver con el w y el adaptador actualizados
             solver = BSGCostPredictorSolver(action_model, cost_model, input_adapter, w)
-            
+
+            # Los resultados sin memoria llevan el prefijo "nm_" para no sobrescribir los con memoria
+            prefix = "" if USE_MEMORY else "nm_"
+            csv_filename = f"{prefix}{solver.name}_w{w}_{DATASET}_{H_minus_2}-{S}.csv"
+
             # Llamamos a tu función refactorizada
-            run_eval(solver, folder, H, max_steps)
+            run_eval(solver, folder, H, MAX_STEPS, csv_filename)
 
 if __name__ == "__main__":
     run_all_benchmarks()
