@@ -26,7 +26,7 @@ if __name__ == "__main__":
     print(f"ℹ️ Usando dispositivo: {device}")
 
     # Cargar el modelo base
-    model_name = "actions_sl" 
+    model_name = "sl" 
 
     model = load_model(CPMPTransformer, model_name)
     model.to(device)
@@ -68,7 +68,7 @@ if __name__ == "__main__":
         weight_decay=0.0,
         device=device,
         save_dir="rl",
-        model_name=f"actions_rl",
+        model_name="rl",
         test_size_per_combo=640,
         train_size_per_combo=128000,
         seed=42

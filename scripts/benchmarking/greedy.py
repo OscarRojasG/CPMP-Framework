@@ -6,7 +6,7 @@ USE_MEMORY = True
 DATASET = "cvs"
 
 # Modelo a cargar (nombre en la carpeta models/)
-MODEL_NAME = "actions_rl"
+MODEL_NAME = "rl"
 
 # Configuraciones (H-2, S)
 CONFIGS = [

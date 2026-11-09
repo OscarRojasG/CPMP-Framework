@@ -6,7 +6,7 @@ USE_MEMORY = True
 DATASET = "cvs"
 
 # Modelos a cargar (nombres en la carpeta models/)
-ACTION_MODEL_NAME = "actions_rl"
+ACTION_MODEL_NAME = "rl"
 COST_MODEL_NAME = "cost"
 
 # Anchos de Beam Search (w)

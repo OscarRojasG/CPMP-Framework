@@ -224,6 +224,8 @@ __marimo__/
 /models/*
 /models/hyperparameters/*
 /experiments-old/
+/experiments-old-v2/
+/backup/
 
 !/instances/benchmarks
 !/data/.gitkeep
@@ -231,11 +233,13 @@ __marimo__/
 !/models/hyperparameters
 !/models/hyperparameters/.gitkeep
 
-!/models/actions_sl.pth
-!/models/actions_rl.pth
+!/models/sl.pth
+!/models/rl.pth
 !/models/cost.pth
 !/models/ablation_sf.pth
-!/models/hyperparameters/actions_sl.json
-!/models/hyperparameters/actions_rl.json
+!/models/experts/
+!/models/hyperparameters/sl.json
+!/models/hyperparameters/rl.json
 !/models/hyperparameters/cost.json
 !/models/hyperparameters/ablation_sf.json
+!/models/hyperparameters/experts/

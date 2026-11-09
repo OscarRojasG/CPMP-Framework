@@ -6,7 +6,7 @@ USE_MEMORY = True
 DATASET = "cvs"
 
 # Modelo a cargar (nombre en la carpeta models/)
-MODEL_NAME = "actions_rl"
+MODEL_NAME = "rl"
 
 # Anchos de Beam Search (w)
 W_VALUES = [2, 4, 8, 16, 32]
