@@ -57,7 +57,7 @@ model = load_model(CPMPTransformer, "rl")               # or "sl", "experts/rl_5
 
 The training datasets (HDF5, 380,000 samples each: 20,000 per CV group) are archived separately on Zenodo: **DOI: _to be added_**.
 
-- `ue_sl.data`: imitation dataset for the action network.
+- `actions_sl.data`: imitation dataset for the action network.
 - `cost.data`: training dataset for the cost network.
 
 Place them in `data/`. They can be regenerated with `scripts/data/actions.py` and `scripts/data/cost.py`.
