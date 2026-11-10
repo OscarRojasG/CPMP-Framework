@@ -55,7 +55,7 @@ model = load_model(CPMPTransformer, "rl")               # or "sl", "experts/rl_5
 
 ## Datasets
 
-The training datasets (HDF5, 380,000 samples each: 20,000 per CV group) are archived separately on Zenodo: **DOI: _to be added_**.
+The training datasets (HDF5, 380,000 samples each: 20,000 per CV group) are archived separately on Zenodo: [10.5281/zenodo.24093623](https://doi.org/10.5281/zenodo.24093623).
 
 - `actions_sl.data`: imitation dataset for the action network.
 - `cost.data`: training dataset for the cost network.
