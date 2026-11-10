@@ -1,5 +1,8 @@
 # CPMP-Framework
 
+[![Code DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24095037.svg)](https://doi.org/10.5281/zenodo.24095037)
+[![Datasets DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24093623.svg)](https://doi.org/10.5281/zenodo.24093623)
+
 Code, trained models and results for the paper **"A Size-Independent Self-Attention Model for the Container Pre-Marshalling Problem"** (I. Araya, F. Astudillo, O. Rojas, I. Guerrero).
 
 A self-attention encoder-decoder with no parameter tied to the width or height of the bay, so that a single network serves every training size of the Container Pre-Marshalling Problem (CPMP). The action policy imitates the FRG heuristic, is refined with REINFORCE, and is combined with a cost network that estimates the remaining moves to guide beam search.
@@ -87,6 +90,8 @@ Results are written to `experiments/` as one CSV per configuration (instance, so
   note   = {Under review}
 }
 ```
+
+The code and trained models of the paper (release v1.0.0) are archived on Zenodo, [10.5281/zenodo.24095037](https://doi.org/10.5281/zenodo.24095037), and the training datasets at [10.5281/zenodo.24093623](https://doi.org/10.5281/zenodo.24093623).
 
 ## License
 
