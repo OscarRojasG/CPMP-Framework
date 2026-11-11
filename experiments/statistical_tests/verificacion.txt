@@ -1,0 +1,70 @@
+Instancias: 760 (19 grupos x 40), mismo conjunto en las 20 fuentes
+== Verificación contra tab_cv_main y fig_pareto
+Pasos por grupo + promedios: 168/168 celdas coinciden (máx. |dif| por grupo = 0.0050, tolerancia de redondeo 0.005)
+  tiempo Greedy      Time (s), 19   : datos    0.058  tabla    0.058  OK
+  tiempo Greedy      Time (s), 7 CV : datos    0.054  tabla    0.054  OK
+  tiempo BC128       Time (s), 19   : datos   21.999  tabla   22.000  OK
+  tiempo BC128       Time (s), 7 CV : datos   20.728  tabla   20.730  OK
+  tiempo BC256       Time (s), 19   : datos   43.074  tabla   43.070  OK
+  tiempo BC256       Time (s), 7 CV : datos   40.617  tabla   40.620  OK
+  tiempo BC512       Time (s), 19   : datos   85.257  tabla   85.260  OK
+  tiempo BC512       Time (s), 7 CV : datos   80.040  tabla   80.040  OK
+  tiempo BSG16       Time (s), 19   : datos   26.642  tabla   26.640  OK
+  tiempo BSG16       Time (s), 7 CV : datos   21.701  tabla   21.700  OK
+  tiempo BSG32       Time (s), 19   : datos   88.883  tabla   88.880  OK
+  tiempo BSG32       Time (s), 7 CV : datos   71.378  tabla   71.380  OK
+  tiempo BSFRG10000  Time (s), 19   : datos   23.113  tabla   23.110  OK
+  tiempo BSFRG10000  Time (s), 7 CV : datos   19.560  tabla   19.560  OK
+  fig_pareto BC2       : pasos 25.2553 vs 25.26 OK | tiempo 0.133 vs 0.13 OK
+  fig_pareto BC4       : pasos 24.9987 vs 25.00 OK | tiempo 0.206 vs 0.21 OK
+  fig_pareto BC8       : pasos 24.7868 vs 24.79 OK | tiempo 0.498 vs 0.50 OK
+  fig_pareto BC16      : pasos 24.5947 vs 24.59 OK | tiempo 1.549 vs 1.55 OK
+  fig_pareto BC32      : pasos 24.4698 vs 24.47 OK | tiempo 4.613 vs 4.61 OK
+  fig_pareto BC64      : pasos 24.3930 vs 24.39 OK | tiempo 11.202 vs 11.20 OK
+  fig_pareto BC128     : pasos 24.3118 vs 24.31 OK | tiempo 21.999 vs 22.00 OK
+  fig_pareto BC256     : pasos 24.2461 vs 24.25 OK | tiempo 43.074 vs 43.07 OK
+  fig_pareto BC512     : pasos 24.1974 vs 24.20 OK | tiempo 85.257 vs 85.26 OK
+  fig_pareto BSG2      : pasos 24.8013 vs 24.80 OK | tiempo 1.106 vs 1.11 OK
+  fig_pareto BSG4      : pasos 24.5224 vs 24.52 OK | tiempo 2.293 vs 2.29 OK
+  fig_pareto BSG8      : pasos 24.3882 vs 24.39 OK | tiempo 7.234 vs 7.23 OK
+  fig_pareto BSG16     : pasos 24.3132 vs 24.31 OK | tiempo 26.642 vs 26.64 OK
+  fig_pareto BSG32     : pasos 24.2605 vs 24.26 OK | tiempo 88.883 vs 88.88 OK
+  fig_pareto BSFRG1000 : pasos 25.2789 vs 25.28 OK | tiempo 2.350 vs 2.35 OK
+  fig_pareto BSFRG10000: pasos 24.9855 vs 24.99 OK | tiempo 23.113 vs 23.11 OK
+  BS-FRG 1000: pasos k3_bs vs -c 1 distintos en 0/760 instancias
+  BS-FRG 10000: pasos k3_bs vs -c 1 distintos en 0/760 instancias
+
+== Wilcoxon signed-rank pareado, 760 instancias (mejor = A con menos movimientos)
+      A           B      tA      tB   medA   medB  mej  igu  peo  p(wilcox)   p(pratt)    rbc
+    BC2   BSFRG1000    0.13    2.35  25.26  25.28  182  416  162   3.95e-01   3.04e-01  0.051
+    BC8  BSFRG10000    0.50   23.11  24.79  24.99  202  460   98   4.68e-10   7.45e-10  0.390
+  BC128  BSFRG10000   22.00   23.11  24.31  24.99  324  426   10   9.09e-56   7.85e-66  0.966
+   BC32  BSFRG10000    4.64   23.11  24.43  24.95  285  453   21   1.79e-45   9.74e-52  0.897  [excl. 1+0 no resueltas]
+  BC512  BSFRG10000   85.26   23.11  24.20  24.99  351  409    0   6.55e-62   1.79e-76  1.000
+   BC16   BSFRG1000    1.55    2.35  24.59  25.28  323  406   31   6.81e-49   4.00e-55  0.879
+   BC32   BSFRG1000    4.64    2.35  24.43  25.25  348  400   11   2.67e-59   2.40e-70  0.970  [excl. 1+0 no resueltas]
+    BC8        BSG2    0.50    1.11  24.79  24.80  156  473  131   5.48e-01   2.02e-01  0.038
+   BC16        BSG2    1.55    1.11  24.59  24.80  199  486   75   2.00e-11   1.24e-13  0.440
+   BC32        BSG4    4.64    2.29  24.43  24.49  128  552   79   3.85e-03   8.23e-04  0.212  [excl. 1+0 no resueltas]
+   BC64        BSG8   11.30    7.23  24.35  24.36   89  587   83   7.99e-01   6.65e-01  0.020  [excl. 1+0 no resueltas]
+  BC128       BSG16   22.00   26.64  24.31  24.31   73  617   70   9.54e-01   8.17e-01  0.005
+  BC256       BSG32   43.07   88.88  24.25  24.26   65  645   50   3.66e-01   1.74e-01  0.087
+  BC512       BSG32   85.26   88.88  24.20  24.26   78  652   30   5.53e-05   4.54e-06  0.404
+ Greedy         FRG    0.06    0.00  25.72  31.29  684   66   10  2.96e-113  2.85e-121  0.990
+
+(7 grupos CV)
+    BC2   BSFRG1000 n=280   65/ 163/  52 p=3.89e-01 rbc=0.087
+    BC8  BSFRG10000 n=280   66/ 173/  41 p=1.48e-02 rbc=0.249
+  BC128  BSFRG10000 n=280  109/ 165/   6 p=1.64e-19 rbc=0.927
+   BC32  BSFRG10000 n=280   94/ 174/  12 p=4.85e-15 rbc=0.812
+  BC512  BSFRG10000 n=280  121/ 159/   0 p=3.19e-23 rbc=1.000
+   BC16   BSFRG1000 n=280  114/ 155/  11 p=5.66e-19 rbc=0.877
+   BC32   BSFRG1000 n=280  121/ 154/   5 p=1.05e-21 rbc=0.950
+    BC8        BSG2 n=280   52/ 183/  45 p=7.64e-01 rbc=0.032
+   BC16        BSG2 n=280   61/ 198/  21 p=5.79e-05 rbc=0.480
+   BC32        BSG4 n=280   47/ 204/  29 p=6.50e-02 rbc=0.222
+   BC64        BSG8 n=280   27/ 224/  29 p=8.98e-01 rbc=-0.018
+  BC128       BSG16 n=280   32/ 227/  21 p=9.00e-02 rbc=0.237
+  BC256       BSG32 n=280   21/ 245/  14 p=4.42e-01 rbc=0.133
+  BC512       BSG32 n=280   26/ 247/   7 p=6.86e-03 rbc=0.483
+ Greedy         FRG n=280  250/  28/   2 p=4.69e-43 rbc=0.999

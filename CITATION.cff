@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the paper below."
+title: "A Size-Independent Self-Attention Model for the Container Pre-Marshalling Problem"
+authors:
+  - family-names: Araya
+    given-names: Ignacio
+  - family-names: Astudillo
+    given-names: Felipe
+  - family-names: Rojas
+    given-names: Oscar
+  - family-names: Guerrero
+    given-names: Ian
+repository-code: "https://github.com/OscarRojasG/CPMP-Framework"
+license: MIT
+doi: 10.5281/zenodo.24095036
+preferred-citation:
+  type: unpublished
+  title: "A Size-Independent Self-Attention Model for the Container Pre-Marshalling Problem"
+  authors:
+    - family-names: Araya
+      given-names: Ignacio
+    - family-names: Astudillo
+      given-names: Felipe
+    - family-names: Rojas
+      given-names: Oscar
+    - family-names: Guerrero
+      given-names: Ian
+  notes: "Submitted to Computers & Operations Research"

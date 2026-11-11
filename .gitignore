@@ -243,3 +243,7 @@ __marimo__/
 !/models/hyperparameters/cost.json
 !/models/hyperparameters/ablation_sf.json
 !/models/hyperparameters/experts/
+
+# Build output of frg_solver/ and temporary instance files
+/frg_solver/frg
+/frg_solver/cpmp/

@@ -18,8 +18,9 @@ Decisiones de diseño (ver plan/README):
   determinan el embedding por completo; la máscara s_mask se aplica después de
   leerla), y los estados hermanos de un árbol DFS/LDS comparten casi todas sus
   pilas. Es una caché estrictamente más fina que el memo por estado de abajo.
-- value() = exp(cost_model(...)) porque el cost model se entrena para
-  predecir log(pasos restantes) (ver generation/adapters/output/cost_adapter.py).
+- value() = exp(cost_model(...)) - 1 porque el cost model se entrena para
+  predecir ln(pasos restantes + 1) (ver data/adapters/output/cost_adapter.py).
+  Sólo lo usa el bounding, desactivado en todas las corridas reportadas.
   Es V^pi (bajo nuestra política), no V*: d*V_hat NO es una cota inferior
   válida en sentido estricto y puede podar el óptimo; se mitiga calibrando
   `d` empíricamente (ver DLTS/calibrate.py), igual que hace el paper con su
@@ -153,7 +154,7 @@ class NetProvider:
         return result
 
     def value(self, layout) -> float:
-        """exp(cost_model(...)) = estimación de pasos restantes (V^pi)."""
+        """exp(cost_model(...)) - 1 = estimación de pasos restantes (V^pi)."""
         if self.cost_model is None:
             raise RuntimeError("NetProvider sin cost_model: no se puede consultar el bounding")
 
@@ -170,7 +171,7 @@ class NetProvider:
             stack_embeddings, _ = self.cost_model.encode(*tensors, memory=None)
             pred = self.cost_model.decode(stack_embeddings, *tensors)
         log_cost = pred[0].item()
-        result = float(np.exp(log_cost))
+        result = max(float(np.exp(log_cost)) - 1.0, 0.0)
 
         self.stats.value_calls += 1
         self.stats.value_forwards += 1

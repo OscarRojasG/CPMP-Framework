@@ -1,0 +1,31 @@
+metodo,w,saldo,0,1,2
+bscost,2,empate,101,265,109
+bscost,2,gana BS+Cost,2,13,30
+bscost,2,gana BSG,2,36,201
+bscost,4,empate,108,244,138
+bscost,4,gana BS+Cost,1,11,21
+bscost,4,gana BSG,1,30,205
+bscost,8,empate,140,230,148
+bscost,8,gana BS+Cost,0,5,19
+bscost,8,gana BSG,4,21,192
+bscost,16,empate,186,201,149
+bscost,16,gana BS+Cost,3,9,26
+bscost,16,gana BSG,3,14,168
+bscost,32,empate,218,201,161
+bscost,32,gana BS+Cost,1,5,26
+bscost,32,gana BSG,4,11,131
+bsg,2,empate,102,0,373
+bsg,2,gana BS+Cost,1,0,44
+bsg,2,gana BSG,7,0,232
+bsg,4,empate,126,0,364
+bsg,4,gana BS+Cost,1,0,32
+bsg,4,gana BSG,5,0,231
+bsg,8,empate,157,0,361
+bsg,8,gana BS+Cost,0,0,24
+bsg,8,gana BSG,2,0,215
+bsg,16,empate,213,0,323
+bsg,16,gana BS+Cost,2,0,36
+bsg,16,gana BSG,15,0,170
+bsg,32,empate,267,0,313
+bsg,32,gana BS+Cost,1,0,31
+bsg,32,gana BSG,16,0,131
