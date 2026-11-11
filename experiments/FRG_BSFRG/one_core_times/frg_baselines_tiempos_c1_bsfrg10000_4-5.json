@@ -1,0 +1,475 @@
+{
+ "conjunto": "benchmarks",
+ "folders": [
+  "benchmarks/4-5"
+ ],
+ "metodos": [
+  "bsfrg10000"
+ ],
+ "host": {
+  "node": "computo-02",
+  "machine": "x86_64",
+  "system": "Linux",
+  "release": "4.18.0-477.10.1.el8_8.x86_64",
+  "cpus": 40,
+  "workers": 1
+ },
+ "solver": {
+  "bin": "frg_solver/frg",
+  "a": "1.2",
+  "k": 3,
+  "seed": 2,
+  "asignacion": "si",
+  "max_steps": "BENCHMARK_CONFIG"
+ },
+ "wall_total_s": 201.0,
+ "summary": {
+  "bsfrg10000": {
+   "avg_steps_solved": 18.075,
+   "solved": 40,
+   "total": 40,
+   "topes": 0,
+   "errores": 0,
+   "t_solver_s": {
+    "mean": 4.9987,
+    "median": 5.1732,
+    "max": 10.2645,
+    "total": 199.95
+   },
+   "t_wall_s": {
+    "mean": 5.0209,
+    "max": 10.2985,
+    "total": 200.84
+   },
+   "avg_7_grupos_cv": null
+  }
+ },
+ "por_grupo": {
+  "4-5": {
+   "bsfrg10000": {
+    "avg_steps_solved": 18.075,
+    "solved": 40,
+    "total": 40,
+    "topes": 0,
+    "errores": 0,
+    "t_solver_s": {
+     "mean": 4.9987,
+     "median": 5.1732,
+     "max": 10.2645,
+     "total": 199.95
+    },
+    "t_wall_s": {
+     "mean": 5.0209,
+     "max": 10.2985,
+     "total": 200.84
+    }
+   }
+  }
+ },
+ "raw": {
+  "benchmarks/4-5": {
+   "bsfrg10000": [
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-1.dat",
+     "solved": true,
+     "steps": 19,
+     "t_solver": 5.50943,
+     "t_wall": 5.533609920181334,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-10.dat",
+     "solved": true,
+     "steps": 15,
+     "t_solver": 2.99761,
+     "t_wall": 3.014695812948048,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-11.dat",
+     "solved": true,
+     "steps": 14,
+     "t_solver": 0.44084,
+     "t_wall": 0.4511942137032747,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-12.dat",
+     "solved": true,
+     "steps": 18,
+     "t_solver": 5.42552,
+     "t_wall": 5.450154839083552,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-13.dat",
+     "solved": true,
+     "steps": 15,
+     "t_solver": 2.54939,
+     "t_wall": 2.565699938684702,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-14.dat",
+     "solved": true,
+     "steps": 20,
+     "t_solver": 6.95344,
+     "t_wall": 6.98098449036479,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-15.dat",
+     "solved": true,
+     "steps": 21,
+     "t_solver": 7.51342,
+     "t_wall": 7.541591132991016,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-16.dat",
+     "solved": true,
+     "steps": 13,
+     "t_solver": 1.93439,
+     "t_wall": 1.94955016952008,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-17.dat",
+     "solved": true,
+     "steps": 23,
+     "t_solver": 10.2645,
+     "t_wall": 10.298501601442695,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-18.dat",
+     "solved": true,
+     "steps": 17,
+     "t_solver": 2.57272,
+     "t_wall": 2.589761581271887,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-19.dat",
+     "solved": true,
+     "steps": 18,
+     "t_solver": 4.59383,
+     "t_wall": 4.615516765974462,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-2.dat",
+     "solved": true,
+     "steps": 19,
+     "t_solver": 5.54481,
+     "t_wall": 5.569994492456317,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-20.dat",
+     "solved": true,
+     "steps": 19,
+     "t_solver": 5.3412,
+     "t_wall": 5.365021551027894,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-21.dat",
+     "solved": true,
+     "steps": 20,
+     "t_solver": 7.85048,
+     "t_wall": 7.879368350841105,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-22.dat",
+     "solved": true,
+     "steps": 21,
+     "t_solver": 6.25144,
+     "t_wall": 6.277268946170807,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-23.dat",
+     "solved": true,
+     "steps": 21,
+     "t_solver": 7.98592,
+     "t_wall": 8.015156749635935,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-24.dat",
+     "solved": true,
+     "steps": 16,
+     "t_solver": 3.42887,
+     "t_wall": 3.4478221172466874,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-25.dat",
+     "solved": true,
+     "steps": 20,
+     "t_solver": 5.7009,
+     "t_wall": 5.724720754660666,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-26.dat",
+     "solved": true,
+     "steps": 20,
+     "t_solver": 5.75243,
+     "t_wall": 5.776732394471765,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-27.dat",
+     "solved": true,
+     "steps": 16,
+     "t_solver": 4.24481,
+     "t_wall": 4.265858288854361,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-28.dat",
+     "solved": true,
+     "steps": 16,
+     "t_solver": 2.87973,
+     "t_wall": 2.897306581027806,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-29.dat",
+     "solved": true,
+     "steps": 21,
+     "t_solver": 6.91304,
+     "t_wall": 6.939973312430084,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-3.dat",
+     "solved": true,
+     "steps": 20,
+     "t_solver": 5.49878,
+     "t_wall": 5.522495585493743,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-30.dat",
+     "solved": true,
+     "steps": 22,
+     "t_solver": 9.36523,
+     "t_wall": 9.39804081339389,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-31.dat",
+     "solved": true,
+     "steps": 20,
+     "t_solver": 5.00524,
+     "t_wall": 5.027725411579013,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-32.dat",
+     "solved": true,
+     "steps": 21,
+     "t_solver": 7.07518,
+     "t_wall": 7.102235377766192,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-33.dat",
+     "solved": true,
+     "steps": 17,
+     "t_solver": 4.2967,
+     "t_wall": 4.317628056742251,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-34.dat",
+     "solved": true,
+     "steps": 21,
+     "t_solver": 7.80854,
+     "t_wall": 7.8375720381736755,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-35.dat",
+     "solved": true,
+     "steps": 17,
+     "t_solver": 4.54716,
+     "t_wall": 4.569123929366469,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-36.dat",
+     "solved": true,
+     "steps": 12,
+     "t_solver": 0.226473,
+     "t_wall": 0.23245327919721603,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-37.dat",
+     "solved": true,
+     "steps": 16,
+     "t_solver": 4.01478,
+     "t_wall": 4.03467102907598,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-38.dat",
+     "solved": true,
+     "steps": 18,
+     "t_solver": 3.67517,
+     "t_wall": 3.6947520216926932,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-39.dat",
+     "solved": true,
+     "steps": 19,
+     "t_solver": 6.51874,
+     "t_wall": 6.544563492760062,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-4.dat",
+     "solved": true,
+     "steps": 11,
+     "t_solver": 0.261439,
+     "t_wall": 0.2671200279146433,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-40.dat",
+     "solved": true,
+     "steps": 17,
+     "t_solver": 4.71144,
+     "t_wall": 4.733246329240501,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-5.dat",
+     "solved": true,
+     "steps": 17,
+     "t_solver": 4.71215,
+     "t_wall": 4.7340694814920425,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-6.dat",
+     "solved": true,
+     "steps": 16,
+     "t_solver": 3.23413,
+     "t_wall": 3.2526300428435206,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-7.dat",
+     "solved": true,
+     "steps": 16,
+     "t_solver": 4.57862,
+     "t_wall": 4.599826524965465,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-8.dat",
+     "solved": true,
+     "steps": 21,
+     "t_solver": 6.3117,
+     "t_wall": 6.337143084034324,
+     "tope": false,
+     "error": null
+    },
+    {
+     "folder": "benchmarks/4-5",
+     "nombre": "data4-5-9.dat",
+     "solved": true,
+     "steps": 20,
+     "t_solver": 5.4569,
+     "t_wall": 5.480292422696948,
+     "tope": false,
+     "error": null
+    }
+   ]
+  }
+ }
+}

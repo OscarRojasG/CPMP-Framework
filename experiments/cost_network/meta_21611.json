@@ -1,0 +1,44 @@
+{
+ "compuerta": {
+  "commit": "563e683b3a26c5be1e9fe67fde167b5b5aba702e",
+  "fecha_commit": "2026-10-09",
+  "src": "src",
+  "modelo_accion": "rl",
+  "archivos_src": 60,
+  "instancias": 760
+ },
+ "huella": "5b296e04936d",
+ "versiones": {
+  "python": "3.14.4",
+  "torch": "2.11.0",
+  "numpy": "2.4.4"
+ },
+ "argv": [
+  "run_ranking_costo.py",
+  "correr",
+  "--workers",
+  "40",
+  "--tag",
+  "v3_563e683",
+  "--metodos",
+  "raiz",
+  "plano-bscost",
+  "plano-bsg",
+  "bscost",
+  "bsg"
+ ],
+ "inicio": "2026-10-19 12:20:48",
+ "host": {
+  "node": "computo-03",
+  "machine": "x86_64",
+  "system": "Linux",
+  "release": "4.18.0-477.10.1.el8_8.x86_64",
+  "workers": 40,
+  "slurm_job": "21611"
+ },
+ "teval": 100,
+ "cmin_w": [
+  8,
+  32
+ ]
+}
